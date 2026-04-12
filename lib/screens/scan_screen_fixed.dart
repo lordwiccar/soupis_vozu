@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import '../services/theme_service.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:soupis_vozu/models/inventory.dart';
@@ -26,7 +27,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   bool _isDisposing = false; // Klíčové pro Android 16
   bool _isFlashOn = false; // Stav blesku
   int _failedScanCount = 0; // Počet neúspěšných snímků za sebou
-  List<String> _detectedNumbers = [];
+  final List<String> _detectedNumbers = [];
   int _totalWagonCount = 0; // Celkový počet vozů v soupisu
   late final TextRecognizer _textRecognizer;
   final bool _isMobilePlatform = !kIsWeb &&
@@ -34,12 +35,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           defaultTargetPlatform == TargetPlatform.iOS);
   String? _currentInventoryId;
   int _nextOrderNumber = 1;
-  String? _currentLocation; // Uložená lokace pro soupis
-  bool _inventoryNamed = false; // Zda byl soupis již pojmenován
+  String? _currentLocation;
 
   Future<void> _toggleFlash() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized)
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
+    }
 
     try {
       setState(() {
@@ -77,8 +78,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showNameDialog();
         });
-      } else {
-        _inventoryNamed = true;
       }
     }
   }
@@ -99,8 +98,10 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
 
       // Použijeme nízkou přesnost a velmi krátký timeout
       final Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low,
-        timeLimit: const Duration(seconds: 3),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 3),
+        ),
       );
 
       List<Placemark> placemarks = await placemarkFromCoordinates(
@@ -144,7 +145,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         });
       }
     } catch (e) {
-      print('Chyba při načítání počtu vozů: $e');
+      debugPrint('Chyba při načítání počtu vozů: $e');
     }
   }
 
@@ -482,7 +483,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       // Vytvoříme soupis hned při pojmenování
       _currentInventoryId = await InventoryService.createInventory(result,
           location: _currentLocation);
-      _inventoryNamed = true;
       setState(() {});
     }
 
@@ -547,11 +547,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                 }
               }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF591664),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Přidat'),
+            child: const Text('PŘIDAT'),
           ),
         ],
       ),
@@ -579,8 +575,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(number),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF591664),
-                      foregroundColor: Colors.white,
                       minimumSize: const Size(double.infinity, 48),
                     ),
                     child: Text(
@@ -631,39 +625,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     }
   }
 
-  void _showDetectedNumbersDialog(List<String> numbers) {
-    if (!mounted || _isDisposing) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Nalezeno ${numbers.length} čísel vozů'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: numbers.length,
-            itemBuilder: (context, index) {
-              final number = numbers[index];
-              final isValid = UicValidator.validateUicNumber(number);
-              final formatted = UicValidator.formatUicNumber(number);
-              return ListTile(
-                leading: Icon(isValid ? Icons.check_circle : Icons.error,
-                    color: isValid ? Colors.green : Colors.red),
-                title: Text(formatted),
-                subtitle:
-                    Text(isValid ? 'Platné UIC číslo' : 'Neplatné UIC číslo'),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('OK'))
-        ],
-      ),
-    );
-  }
-
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -674,60 +635,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: Colors.green));
-  }
-
-  // Utility: Vrátí barvu pozadí na základě příznaku vozu
-  Color? _getFlagBackgroundColor(String? notes) {
-    if (notes == null || notes.isEmpty) return null;
-
-    // Extrahujeme primární příznak (např. "K + R1 - poznámky" → "K")
-    // Rozdělíme podle ' - ' a vezmeme část s příznaky
-    final parts = notes.split(' - ');
-    final flagsPart = parts[0].trim(); // "K" nebo "K + M" apod.
-
-    // Hledáme první příznak v kombinaci
-    final flagList = flagsPart.split(' + ');
-    for (final flag in flagList) {
-      final trimmedFlag = flag.trim();
-      switch (trimmedFlag) {
-        case 'K':
-          return const Color(0xFFbde0fc); // Přesná modrá
-        case 'M':
-          return const Color(0xFFfcf5bd); // Přesná žlutá
-        case '314':
-          return const Color(0xFFbdfcf2); // Přesná tyrkysová
-      }
-    }
-    return null;
-  }
-
-  // Utility: Extrahuje jen poznámky bez příznaku
-  String _extractNotesOnly(String notes) {
-    if (notes.isEmpty) return '';
-
-    // Pokud notes obsahuje " - ", oddělíme příznak(y) a poznámky
-    if (notes.contains(' - ')) {
-      final parts = notes.split(' - ');
-      return parts.length > 1 ? parts.sublist(1).join(' - ') : '';
-    }
-
-    // Pokud notes obsahuje jen příznak(y) bez poznámky (např. "K" nebo "K + M")
-    // vrať prázdný string
-    final knownFlags = ['K', 'M', '314', 'R1'];
-    final trimmed = notes.trim();
-    if (knownFlags.contains(trimmed)) return '';
-
-    // Kontroluj kombinace příznaků (např. "K + M")
-    final parts = trimmed.split(' + ');
-    bool isOnlyFlags = true;
-    for (final part in parts) {
-      if (!knownFlags.contains(part.trim())) {
-        isOnlyFlags = false;
-        break;
-      }
-    }
-
-    return isOnlyFlags ? '' : notes;
   }
 
   Future<void> _openWagonDetail(String wagonNumber) async {
@@ -777,23 +684,23 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   @override
   Widget build(BuildContext context) {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: ThemeService.kRailAmber),
+        ),
+      );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Skenování vozů'),
-        backgroundColor: const Color(0xFF591664),
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shadowColor: Colors.black.withOpacity(0.4),
+        title: const Text('SKENOVÁNÍ VOZŮ'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: _isDisposing ? null : () => _handleExit(),
         ),
         actions: [
           IconButton(
-            icon: Icon(_isFlashOn ? Icons.flash_on : Icons.flash_off),
+            icon: Icon(_isFlashOn ? Icons.flash_on : Icons.flash_off_outlined),
             onPressed: _isDisposing ? null : _toggleFlash,
             tooltip: _isFlashOn ? 'Vypnout blesk' : 'Zapnout blesk',
           ),
@@ -846,23 +753,35 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
               // Seznam skenovaných vozů
               Expanded(
                 child: Container(
-                  color: Colors.black87,
+                  color: ThemeService.kRailBlack,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                        child: Text(
-                          'Vozy v soupisu ($_totalWagonCount) — v této relaci: ${_detectedNumbers.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 3,
+                              height: 16,
+                              color: ThemeService.kRailAmber,
+                              margin: const EdgeInsets.only(right: 8),
+                            ),
+                            Text(
+                              'VOZY V SOUPISU ($_totalWagonCount)  ·  RELACE: ${_detectedNumbers.length}',
+                              style: TextStyle(
+                                color: ThemeService.kRailAmber,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const Divider(color: Colors.white24, height: 1),
+                      Divider(
+                          color: ThemeService.kRailAmber.withValues(alpha: 0.3),
+                          height: 1),
                       Expanded(
                         child: _detectedNumbers.isEmpty
                             ? const Center(
@@ -915,8 +834,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                         ),
                                         IconButton(
                                           icon: const Icon(
-                                            Icons.edit,
-                                            color: Color(0xFFE3ABED),
+                                            Icons.edit_outlined,
+                                            color: ThemeService.kRailAmber,
                                             size: 18,
                                           ),
                                           padding: EdgeInsets.zero,
@@ -940,7 +859,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
               ),
               // Tlačítko skenovat
               Container(
-                color: Colors.black87,
+                color: ThemeService.kRailBlack,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: SizedBox(
                   width: double.infinity,
@@ -949,25 +868,26 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                         ? null
                         : _captureAndAnalyze,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE3ABED),
-                      foregroundColor: const Color(0xFF9C27B0),
+                      backgroundColor: ThemeService.kRailAmber,
+                      foregroundColor: ThemeService.kRailBlack,
                       disabledBackgroundColor:
-                          const Color(0xFFE3ABED).withValues(alpha: 0.5),
+                          ThemeService.kRailAmber.withValues(alpha: 0.4),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                     ),
                     icon: _isProcessing
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
-                                color: Color(0xFF9C27B0), strokeWidth: 2))
-                        : const Icon(Icons.camera),
+                                color: ThemeService.kRailBlack, strokeWidth: 2))
+                        : const Icon(Icons.document_scanner_outlined),
                     label: Text(
-                      _isProcessing ? 'Zpracovávám...' : 'Skenovat',
-                      style: const TextStyle(fontSize: 16),
+                      _isProcessing ? 'ZPRACOVÁVÁM...' : 'SKENOVAT',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -1084,11 +1004,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                   }
                 ];
 
+                final nav = Navigator.of(context);
                 await InventoryService.addWagonNumbersBatch(
                     _currentInventoryId!, wagonData);
 
                 if (mounted) {
-                  Navigator.of(context).pop();
+                  nav.pop();
                   _showEditResult(newFormatted, isValid);
 
                   // Přidáme opravené číslo také do seznamu detekovaných čísel pro zobrazení v UI

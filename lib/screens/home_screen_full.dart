@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:async';
 import '../services/inventory_service.dart';
+import '../services/theme_service.dart';
 import '../models/inventory.dart';
 
 class HomeScreenFull extends StatefulWidget {
@@ -24,7 +24,7 @@ class _HomeScreenFullState extends State<HomeScreenFull>
     with WidgetsBindingObserver {
   List<Inventory> _inventories = [];
   bool _isResumed = false;
-  Timer? _debounceTimer; // Debounce pro zabránění častým voláním
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -36,7 +36,7 @@ class _HomeScreenFullState extends State<HomeScreenFull>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _debounceTimer?.cancel(); // Uklidíme timer
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -44,10 +44,8 @@ class _HomeScreenFullState extends State<HomeScreenFull>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed && !_isResumed) {
-      // Aplikace se vrátila do popředí, aktualizujeme data
       _debouncedLoadInventories();
       _isResumed = true;
-      // Reset flagu po krátké době
       Future.delayed(const Duration(milliseconds: 500), () {
         _isResumed = false;
       });
@@ -57,137 +55,111 @@ class _HomeScreenFullState extends State<HomeScreenFull>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Vždy obnovíme data při návratu na tuto obrazovku
-    // Tím zajistíme aktuálnost dat i po smazání soupisů
-    print('🔄 didChangeDependencies voláno - vynucená aktualizace soupisů');
     _debouncedLoadInventories();
   }
 
-  // Debounce mechanismus pro zabránění příliš častým voláním
   void _debouncedLoadInventories() {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        _loadInventories();
-      }
+      if (mounted) _loadInventories();
     });
   }
 
   Future<void> _loadInventories() async {
     if (!mounted) return;
-
-    print('🔄 Obnovuji seznam soupisů v home_screen_full.dart');
-
     try {
       final inventories = await InventoryService.getAllInventories();
-      // Seřazení soupisů sestupně (nejnovější nahoře)
       inventories.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-      print('📊 Načteno ${inventories.length} soupisů');
-
-      setState(() {
-        _inventories = inventories;
-      });
+      setState(() => _inventories = inventories);
     } catch (e) {
-      print('❌ Chyba při načítání soupisů: $e');
-      setState(() {
-        _inventories = [];
-      });
+      setState(() => _inventories = []);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Soupisy jsou již seřazené sestupně, vezmeme první 2
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final newestInventories = _inventories.take(2).toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Soupis vozů'),
-        backgroundColor: const Color(0xFF591664),
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shadowColor: Colors.black.withOpacity(0.4),
+        title: const Text('SOUPIS VOZŮ'),
         actions: [
           IconButton(
-            onPressed: () {
-              Navigator.pushNamed(context, '/settings');
-            },
-            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
+            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Nastavení',
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              foregroundColor: Colors.white,
-            ),
           ),
         ],
       ),
       body: Column(
         children: [
+          // Horní dekorativní pruh (jantarová linka pod AppBarem)
+          Container(
+            height: 3,
+            color: ThemeService.kRailAmber,
+          ),
+
           // Hlavní obsah
           Expanded(
             child: Center(
-              child: Flex(
-                direction: Axis.vertical,
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Lottie.asset(
-                    'assets/wagon.json',
-                    width: 200, // Zde si můžeš upravit šířku animace
-                    height: 200, // Zde si můžeš upravit výšku animace
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Vítejte v aplikaci pro soupis vozů',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Skenujte čísla vozů a vytvářejte soupisy',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/scan');
-                    },
-                    icon: const Icon(Icons.camera_alt, size: 20),
-                    label: const Text('Zahájit skenování'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF591664),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Lottie.asset(
+                      'assets/wagon.json',
+                      width: 180,
+                      height: 180,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'VÍTEJTE V APLIKACI\nPRO SOUPIS VOZŮ',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        height: 1.2,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Skenujte čísla vozů a vytvářejte soupisy',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? ThemeService.kRailCream.withValues(alpha:0.55)
+                            : ThemeService.kRailBlack.withValues(alpha:0.5),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pushNamed(context, '/scan'),
+                        icon: const Icon(Icons.document_scanner_outlined, size: 20),
+                        label: const Text('ZAHÁJIT SKENOVÁNÍ'),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
 
-          // Zkratka s posledními soupisy
+          // Sekce posledních soupisů
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF091620)
-                  : Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.all(Radius.circular(16)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+              color: isDark ? ThemeService.kRailCharcoal : Colors.white,
+              border: Border(
+                top: BorderSide(
+                  color: ThemeService.kRailAmber.withValues(alpha:0.6),
+                  width: 2,
                 ),
-              ],
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,53 +168,45 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                   children: [
                     Icon(
                       Icons.history,
-                      color: Theme.of(context).primaryColor,
-                      size: 20,
+                      color: ThemeService.kRailAmber,
+                      size: 18,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Poslední soupisy',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? const Color(0xFFE3ABED)
-                            : Colors.black87,
+                      'POSLEDNÍ SOUPISY',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        letterSpacing: 1.0,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 if (newestInventories.isEmpty)
-                  const Text(
+                  Text(
                     'Zatím žádné soupisy',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF9E9E9E),
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
                   )
                 else
                   ...newestInventories.map((inventory) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.only(bottom: 6),
                         child: InkWell(
-                          onTap: () {
-                            // Přejdi na seznam soupisů
-                            Navigator.pushNamed(context, '/inventories');
-                          },
+                          onTap: () =>
+                              Navigator.pushNamed(context, '/inventories'),
+                          borderRadius: BorderRadius.circular(4),
                           child: Container(
-                            width: double.infinity, // Roztáhne na celou šířku
-                            padding: const EdgeInsets.all(12),
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? const Color(0xFF0D2130)
-                                  : Colors.white,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Theme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? Colors.grey[600]!
-                                    : Colors.grey[300]!,
+                              color: isDark
+                                  ? ThemeService.kRailSteel.withValues(alpha:0.35)
+                                  : ThemeService.kRailCream,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border(
+                                left: BorderSide(
+                                  color: ThemeService.kRailAmber,
+                                  width: 3,
+                                ),
                               ),
                             ),
                             child: Column(
@@ -250,49 +214,28 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                               children: [
                                 Text(
                                   inventory.name,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall,
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Text(
-                                  'Vytvořeno: ${DateFormat.yMd().add_Hm().format(inventory.createdAt)}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF9E9E9E),
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Počet vozů: ${inventory.wagonNumbers.length}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF9E9E9E),
-                                  ),
+                                  'Vytvořeno: ${DateFormat.yMd().add_Hm().format(inventory.createdAt)}  ·  Vozů: ${inventory.wagonNumbers.length}',
+                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],
                             ),
                           ),
                         ),
                       )),
-                const SizedBox(height: 12),
-                // Tlačítko pro celý výpis
+                const SizedBox(height: 8),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/inventories');
-                    },
-                    icon: const Icon(Icons.list_alt),
-                    label: const Text('Všechny soupisy'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE3ABED),
-                      foregroundColor: const Color(0xFF9C27B0),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      textStyle: const TextStyle(fontSize: 16),
-                    ),
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/inventories'),
+                    icon: const Icon(Icons.list_alt, size: 18),
+                    label: const Text('VŠECHNY SOUPISY'),
                   ),
                 ),
               ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory.dart';
 import '../services/inventory_service.dart';
+import '../services/theme_service.dart';
 import '../services/uic_validator.dart';
 
 class WagonDetailScreen extends StatefulWidget {
@@ -33,28 +34,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     '314': 'Ještě použitelný',
   };
 
-  // Funkce pro přidání příznaku R1
-  void _addR1Flag() {
-    setState(() {
-      if (_selectedStatus.contains('R1')) {
-        setState(() {
-          // Odstranění R1 a případného + ze začátku
-          _selectedStatus =
-              _selectedStatus.replaceAll('R1', '').replaceAll('+', '').trim();
-        });
-      } else {
-        setState(() {
-          // Přidání +R1 k existujícímu příznaku
-          if (_selectedStatus.trim().isNotEmpty) {
-            _selectedStatus = '$_selectedStatus + R1';
-          } else {
-            _selectedStatus = 'R1';
-          }
-        });
-      }
-    });
-  }
-
   @override
   void initState() {
     super.initState();
@@ -64,12 +43,10 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     if (widget.wagon.notes?.isNotEmpty == true) {
       final notes = widget.wagon.notes!;
 
-      // Rozdělení na příznaky a poznámky podle ' - '
       final parts = notes.split(' - ');
-      final flagsPart = parts[0]; // Část s příznaky (např. "K + M")
-      final notesPart = parts.length > 1 ? parts.sublist(1).join(' - ') : ''; // Zbylá poznámka
+      final flagsPart = parts[0];
+      final notesPart = parts.length > 1 ? parts.sublist(1).join(' - ') : '';
 
-      // Validace, že flagsPart obsahuje jen známé příznaky
       final validFlags = <String>[];
       for (final flag in _statuses) {
         if (flagsPart.contains(flag)) {
@@ -78,86 +55,16 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
       }
 
       if (validFlags.isNotEmpty) {
-        // Příznaky jsou přítomny - nastav je v pořádí jak se vyskytují
         _selectedStatus = validFlags.join(' + ');
         _notesController.text = notesPart;
       } else {
-        // Žádné známé příznaky - vše je poznámka
         _selectedStatus = '';
         _notesController.text = notes;
       }
     } else {
-      _selectedStatus = ''; // Výchozí žádný příznak
+      _selectedStatus = '';
       _notesController.text = '';
     }
-  }
-
-  // Výběr více příznaků najednou
-  Future<void> _showMultipleFlagsDialog() async {
-    final selectedFlags = <String>{};
-
-    await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Výběr nálepky'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Vyberte nálepku (můžete vybrat více):'),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _statuses.map((flag) {
-                  final isSelected = selectedFlags.contains(flag);
-                  return FilterChip(
-                    label: Text(flag),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) {
-                        selectedFlags.add(flag);
-                      } else {
-                        selectedFlags.remove(flag);
-                      }
-                    },
-                    backgroundColor:
-                        isSelected ? Colors.blue : Colors.grey[300],
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : Colors.black87,
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Zrušit'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context, selectedFlags.toList());
-                    },
-                    child: const Text('Potvrdit'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Zrušit'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _editWagonNumber() async {
@@ -238,7 +145,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   }
 
   Future<void> _updateWagon() async {
-    // Správné vytvoření notes s příznaky a poznámkami
     late String newNotes;
     if (_selectedStatus.isNotEmpty) {
       if (_notesController.text.isNotEmpty) {
@@ -251,7 +157,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     }
 
     try {
-      // Aktualizace existujícího záznamu
       await InventoryService.updateWagonNumber(
         widget.inventoryId,
         widget.wagon.number,
@@ -267,7 +172,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Zavolat onUpdate callback pro aktualizaci seznamu
         widget.onUpdate(
             widget.wagon.formattedNumber, newNotes, _selectedStatus);
         Navigator.pop(context, true);
@@ -321,7 +225,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Zavolat onUpdate callback pro aktualizaci seznamu
         widget.onUpdate(widget.wagon.formattedNumber, '', '');
         Navigator.pop(context);
       }
@@ -341,17 +244,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Číslo vozu ${widget.wagonIndex + 1}'),
-        backgroundColor: const Color(0xFF4DA167),
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(
-          color: Colors.white,
-        ),
-        actionsIconTheme: const IconThemeData(
-          color: Colors.white,
-        ),
-        elevation: 8,
-        shadowColor: Colors.black.withOpacity(0.4),
+        title: Text('ČÍSLO VOZU ${widget.wagonIndex + 1}'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -405,8 +298,8 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                       ),
                                       IconButton(
                                         onPressed: _editWagonNumber,
-                                        icon: const Icon(Icons.edit,
-                                            color: Colors.blue),
+                                        icon: const Icon(Icons.edit_outlined,
+                                            color: ThemeService.kRailSlate),
                                         tooltip: 'Upravit číslo vozu',
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(
@@ -438,9 +331,9 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                 label: Text(_selectedStatus),
                                 selected: true,
                                 onSelected: null, // Nelze změnit
-                                backgroundColor: Colors.blue,
+                                backgroundColor: ThemeService.kRailAmber,
                                 labelStyle: const TextStyle(
-                                  color: Colors.white,
+                                  color: ThemeService.kRailBlack,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -491,7 +384,6 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                   onSelected: (selected) {
                                     setState(() {
                                       if (selected) {
-                                        // Přidání příznaku
                                         if (_selectedStatus.trim().isEmpty) {
                                           _selectedStatus = status;
                                         } else if (!_selectedStatus
@@ -500,11 +392,9 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                               '$_selectedStatus + $status';
                                         }
                                       } else {
-                                        // Odebrání příznaku
                                         if (_selectedStatus == status) {
                                           _selectedStatus = '';
                                         } else {
-                                          // Odstraníme příznak z kombinace
                                           final parts =
                                               _selectedStatus.split(' + ');
                                           parts.remove(status);
@@ -514,12 +404,12 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                     });
                                   },
                                   backgroundColor: isSelected
-                                      ? Theme.of(context).primaryColor
-                                      : Colors.grey[300],
+                                      ? ThemeService.kRailAmber
+                                      : null,
                                   labelStyle: TextStyle(
                                     color: isSelected
-                                        ? Colors.white
-                                        : Colors.black87,
+                                        ? ThemeService.kRailBlack
+                                        : null,
                                     fontSize: isSelected ? 12 : 13,
                                   ),
                                   padding: const EdgeInsets.symmetric(
@@ -624,13 +514,14 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                   child: ElevatedButton(
                     onPressed: _updateWagon,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          widget.wagon.isValid ? Colors.green : Colors.orange,
-                      foregroundColor: Colors.white,
+                      backgroundColor: widget.wagon.isValid
+                          ? ThemeService.kRailAmber
+                          : Colors.orange,
+                      foregroundColor: ThemeService.kRailBlack,
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                     ),
-                    child: const Text('Uložit změny'),
+                    child: const Text('ULOŽIT ZMĚNY'),
                   ),
                 ),
               ],

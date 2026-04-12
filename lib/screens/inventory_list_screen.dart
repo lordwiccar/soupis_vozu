@@ -12,6 +12,7 @@ import '../services/uic_validator.dart';
 import '../models/contact.dart';
 import 'wagon_detail_screen.dart';
 import 'scan_screen_fixed.dart';
+import '../services/theme_service.dart';
 
 class InventoryListScreen extends StatefulWidget {
   const InventoryListScreen({super.key});
@@ -23,7 +24,6 @@ class InventoryListScreen extends StatefulWidget {
 class _InventoryListScreenState extends State<InventoryListScreen>
     with WidgetsBindingObserver {
   List<Inventory> _inventories = [];
-  bool _isLoading = false;
   bool _isReloading = false;
   Timer? _debounceTimer; // Ochrana proti opakovanému načítání
   bool _isLoadingData = false; // Oddělený stav pro skutečné načítání
@@ -34,11 +34,6 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadInventories();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
   }
 
   @override
@@ -67,8 +62,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     if (_isReloading) return;
 
     _isReloading = true;
-    _isLoadingData = true; // Začíná skutečné načítání
-    setState(() => _isLoading = true); // Loading stav pro UI
+    setState(() => _isLoadingData = true);
 
     try {
       final inventories = await InventoryService.getAllInventories();
@@ -76,13 +70,11 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
       setState(() {
         _inventories = inventories;
-        _isLoading = false;
-        _isLoadingData = false; // Konec načítání dat
+        _isLoadingData = false;
         _isReloading = false;
       });
     } catch (e) {
       setState(() {
-        _isLoading = false;
         _isLoadingData = false;
         _isReloading = false;
       });
@@ -407,10 +399,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                 selectedRecipients.remove(cleanEmail);
                             });
                           },
-                          activeColor:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white
-                                  : Colors.purple,
+                          activeColor: const Color(0xFFF0A500),
                         );
                       })
                       .where((widget) => widget is! SizedBox)
@@ -675,7 +664,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
         });
       }
     } catch (e) {
-      print('Chyba při aktualizaci soupisu: $e');
+      debugPrint('Chyba při aktualizaci soupisu: $e');
     }
   }
 
@@ -853,19 +842,17 @@ class _InventoryListScreenState extends State<InventoryListScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Soupisy vozů'),
-        backgroundColor: const Color(0xFF591664),
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shadowColor: Colors.black.withOpacity(0.4),
+        title: const Text('SOUPISY VOZŮ'),
         actions: [
           IconButton(
               onPressed: _loadInventories,
               icon: const Icon(Icons.refresh),
-              tooltip: 'Obnovit')
+              tooltip: 'Obnovit'),
         ],
       ),
-      body: _isLoadingData
+      body: Column(children: [
+        ThemeService.amberStripe,
+        Expanded(child: _isLoadingData
           ? const Center(child: CircularProgressIndicator())
           : _inventories.isEmpty
               ? Center(
@@ -888,14 +875,10 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                     return Card(
                       margin: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 12),
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? const Color(0xFF122C40)
-                          : null,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      elevation: 2,
                       child: ExpansionTile(
                         initiallyExpanded: _expandedState[inventory.id] ?? false,
                         onExpansionChanged: (expanded) {
@@ -932,8 +915,8 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                       IconButton(
                                         onPressed: () => _editInventoryName(
                                             inventory.id, inventory.name),
-                                        icon: const Icon(Icons.edit,
-                                            size: 16, color: Colors.blue),
+                                        icon: const Icon(Icons.edit_outlined,
+                                            size: 16, color: Color(0xFF4A90B8)),
                                         tooltip: 'Upravit název soupisu',
                                         padding: EdgeInsets.zero,
                                         constraints: const BoxConstraints(
@@ -1002,9 +985,9 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                           size: 16),
                                       label: const Text('Otočit pořadí vozů'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.blue,
+                                        foregroundColor: const Color(0xFF4A90B8),
                                         side: const BorderSide(
-                                            color: Colors.blue),
+                                            color: Color(0xFF4A90B8)),
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 12, vertical: 8),
                                       ),
@@ -1033,13 +1016,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                             borderRadius:
                                                 BorderRadius.circular(12),
                                           ),
-                                          color: _getFlagBackgroundColor(wagon.notes) ??
-                                              (Theme.of(context).brightness ==
-                                                      Brightness.dark
-                                                  ? const Color(
-                                                      0xFF1A2B3C) // Tmavě modrá pro tmavý motiv
-                                                  : const Color(
-                                                      0xFFF8F9FA)), // Velmi světlá šedá pro světlý motiv
+                                          color: _getFlagBackgroundColor(wagon.notes),
                                           child: InkWell(
                                             onTap: () async {
                                               if (!wagon.isValid) {
@@ -1090,12 +1067,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                                           const EdgeInsets.all(
                                                               6),
                                                       decoration: BoxDecoration(
-                                                        color: Theme.of(context)
-                                                                    .brightness ==
-                                                                Brightness.dark
-                                                            ? const Color(
-                                                                0xFF091620)
-                                                            : Colors.grey[50],
+                                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                                                         borderRadius:
                                                             BorderRadius
                                                                 .circular(6),
@@ -1179,22 +1151,16 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                     child: ElevatedButton.icon(
                                         onPressed: () =>
                                             _showTableDialog(inventory),
-                                        icon: const Icon(Icons.table_chart),
-                                        label: const Text('Zobrazit tabulku'),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.purple,
-                                            foregroundColor: Colors.white))),
+                                        icon: const Icon(Icons.table_chart_outlined),
+                                        label: const Text('ZOBRAZIT TABULKU'))),
                                 const SizedBox(height: 8),
                                 SizedBox(
                                     width: double.infinity,
                                     child: ElevatedButton.icon(
                                         onPressed: () =>
                                             _copyTableToClipboard(inventory),
-                                        icon: const Icon(Icons.copy),
-                                        label: const Text('Zkopírovat tabulku'),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.green,
-                                            foregroundColor: Colors.white))),
+                                        icon: const Icon(Icons.copy_outlined),
+                                        label: const Text('ZKOPÍROVAT TABULKU'))),
                                 const SizedBox(height: 8),
                                 SizedBox(
                                     width: double.infinity,
@@ -1202,11 +1168,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                         onPressed: () =>
                                             _exportInventoryToEmail(inventory),
                                         icon: const Icon(Icons.email_outlined),
-                                        label:
-                                            const Text('Exportovat do e-mailu'),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.blue,
-                                            foregroundColor: Colors.white))),
+                                        label: const Text('EXPORTOVAT DO E-MAILU'))),
                               ],
                             ),
                           ),
@@ -1215,6 +1177,8 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                     );
                   },
                 ),
+        ),
+      ]),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.pushNamed(context, '/scan'),
         tooltip: 'Nový soupis',

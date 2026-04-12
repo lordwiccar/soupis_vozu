@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/inventory.dart';
@@ -99,7 +100,7 @@ class InventoryService {
     try {
       // Začátek transakce
       await _database!.transaction((txn) async {
-        print('Začínám hromadný zápis ${wagonData.length} čísel vozů');
+        debugPrint('Začínám hromadný zápis ${wagonData.length} čísel vozů');
 
         // Získání existujících čísel pro kontrolu duplicít
         final existingWagons = await txn.query(
@@ -122,7 +123,7 @@ class InventoryService {
 
           // Kontrola duplicity
           if (existingNumbers.contains(wagonNumber)) {
-            print('Duplicitní vůz přeskočen: $wagonNumber');
+            debugPrint('Duplicitní vůz přeskočen: $wagonNumber');
             duplicatesSkipped++;
             continue;
           }
@@ -147,11 +148,11 @@ class InventoryService {
         }
 
         if (duplicatesSkipped > 0) {
-          print('Přeskočeno $duplicatesSkipped duplicitních čísel vozů');
+          debugPrint('Přeskočeno $duplicatesSkipped duplicitních čísel vozů');
         }
       });
 
-      print('Hromadný zápis dokončen');
+      debugPrint('Hromadný zápis dokončen');
 
       // Aktualizace poslední změny soupisu
       await updateLastModified(inventoryId);
@@ -163,10 +164,10 @@ class InventoryService {
         whereArgs: [inventoryId],
       );
 
-      print(
+      debugPrint(
           'Celkem čísel v soupisu $inventoryId po transakci: ${savedWagons.length}');
     } catch (e) {
-      print('Chyba při hromadném ukládání čísel vozů: $e');
+      debugPrint('Chyba při hromadném ukládání čísel vozů: $e');
       rethrow;
     }
   }
@@ -196,7 +197,7 @@ class InventoryService {
         },
       );
 
-      print(
+      debugPrint(
           'Číslo vozu uloženo do databáze: $formattedNumber (ID: $result, pořadí: $order)');
 
       // Aktualizace poslední změny soupisu
@@ -209,9 +210,9 @@ class InventoryService {
         whereArgs: [inventoryId],
       );
 
-      print('Celkem čísel v soupisu $inventoryId: ${savedWagons.length}');
+      debugPrint('Celkem čísel v soupisu $inventoryId: ${savedWagons.length}');
     } catch (e) {
-      print('Chyba při ukládání čísla vozu: $e');
+      debugPrint('Chyba při ukládání čísla vozu: $e');
       rethrow;
     }
   }
@@ -241,7 +242,7 @@ class InventoryService {
 
       return result;
     } catch (e) {
-      print('Chyba při načítání soupisů: $e');
+      debugPrint('Chyba při načítání soupisů: $e');
       return [];
     }
   }
@@ -259,19 +260,19 @@ class InventoryService {
         orderBy: 'order_number ASC',
       );
 
-      print(
+      debugPrint(
           'Načteno ${wagonNumbers.length} čísel vozů pro soupis $inventoryId');
 
       final result = wagonNumbers.map((wagon) {
-        print(
+        debugPrint(
             'Načítám číslo: ${wagon['formatted_number']} (pořadí: ${wagon['order_number']})');
         return WagonNumber.fromMap(wagon);
       }).toList();
 
-      print('Úspěšně zpracováno ${result.length} čísel vozů');
+      debugPrint('Úspěšně zpracováno ${result.length} čísel vozů');
       return result;
     } catch (e) {
-      print('Chyba při načítání čísel vozů: $e');
+      debugPrint('Chyba při načítání čísel vozů: $e');
       return [];
     }
   }
@@ -306,13 +307,13 @@ class InventoryService {
         whereArgs: [inventoryId, wagonId],
       );
 
-      print(
+      debugPrint(
           'Číslo vozu aktualizováno: $formattedNumber (affected rows: $result)');
 
       // Aktualizace poslední změny soupisu
       await updateLastModified(inventoryId);
     } catch (e) {
-      print('Chyba při aktualizaci čísla vozu: $e');
+      debugPrint('Chyba při aktualizaci čísla vozu: $e');
       rethrow;
     }
   }
