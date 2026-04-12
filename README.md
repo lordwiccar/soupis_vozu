@@ -1,6 +1,8 @@
-# soupis_vozu
+# Soupis vozů (Android app)
 
-A new Flutter project.
+Android aplikace pro skenování UIC čísel železničních vozů a tvoření jejich soupisů s možností odeslání na uživatelem definované adresy.
+
+Aplikace je postavena na kombu Flutter/Dart.
 
 ## Getting Started
 
