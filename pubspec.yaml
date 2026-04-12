@@ -1,0 +1,90 @@
+name: soupis_vozu
+description: Aplikace pro tvorbu soupisů železničních vozů s OCR skenováním
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=2.17.0 <4.0.0'
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  
+  # OCR a kamera - kompatibilní verze
+  google_mlkit_text_recognition: ^0.15.1
+  camera: ^0.12.0+1
+  permission_handler: ^12.0.1
+  
+  # Databáze
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  
+  # UI a utility
+  intl: ^0.20.2
+  share_plus: ^12.0.1
+  clipboard: ^3.0.14
+  shared_preferences: ^2.2.2
+  geolocator: ^14.0.2
+  geocoding: ^4.0.0
+  url_launcher: ^6.3.0
+  
+  # Splash screen a Lottie
+  flutter_native_splash: ^2.4.1
+  lottie: ^3.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/wagon.json
+    - assets/
+    - assets/splash.png
+    - assets/animation.json
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon_legacy.png" # Pro starší Androidy a iOS
+  adaptive_icon_background: "assets/icon/background.png" # Tvé SVG pozadí
+  adaptive_icon_foreground: "assets/icon/foreground.png" # Tvé SVG popředí (barevné)
+  adaptive_icon_monochrome: "assets/icon/monochrome.png" # Ta tvoje černá silueta
+
+# Flutter Native Splash
+flutter_native_splash:
+  # The color parameter sets the background color of the splash screen.
+  color: "#FFFFFF"
+  
+  # Use the updated splash.png image with proper sizing
+  image: assets/splash.png
+  
+  # Remove fullscreen mode - show status bar
+  # fullscreen: true
+  
+  # Use contain mode to fit the image properly within the frame
+  android_gravity: center
+  ios_content_mode: scaleAspectFit
+  
+  # Set to true to disable the splash screen on Android 12+.
+  android_12:
+    # The color parameter sets the background color of the splash screen on Android 12+.
+    color: "#FFFFFF"
+    
+    # Use the updated splash.png for Android 12+ splash screen
+    image: assets/splash.png
+    
+    # The icon_background_color parameter sets the background color of the icon on Android 12+.
+    icon_background_color: "#FFFFFF"
+    
+    # Remove fullscreen mode for Android 12+
+    # fullscreen: true
+  
+  # The web parameter is used to generate a web splash screen.
+  web: false
