@@ -102,49 +102,54 @@ class _HomeScreenFullState extends State<HomeScreenFull>
 
           // Hlavní obsah
           Expanded(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Lottie.asset(
-                      'assets/wagon.json',
-                      width: 180,
-                      height: 180,
-                      fit: BoxFit.contain,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'VÍTEJTE V APLIKACI\nPRO SOUPIS VOZŮ',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        height: 1.2,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Skenujte čísla vozů a vytvářejte soupisy',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: isDark
-                            ? ThemeService.kRailCream.withValues(alpha:0.55)
-                            : ThemeService.kRailBlack.withValues(alpha:0.5),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 28),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => Navigator.pushNamed(context, '/scan'),
-                        icon: const Icon(Icons.document_scanner_outlined, size: 20),
-                        label: const Text('ZAHÁJIT SKENOVÁNÍ'),
-                      ),
-                    ),
-                  ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Lottie.asset(
+                  'assets/wagon.json',
+                  width: double.infinity,
+                  fit: BoxFit.contain,
                 ),
-              ),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            'VÍTEJTE V APLIKACI\nPRO SOUPIS VOZŮ',
+                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              height: 1.2,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Skenujte čísla vozů a vytvářejte soupisy',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: isDark
+                                  ? ThemeService.kRailCream.withValues(alpha:0.55)
+                                  : ThemeService.kRailBlack.withValues(alpha:0.5),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 28),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => Navigator.pushNamed(context, '/scan'),
+                              icon: const Icon(Icons.document_scanner_outlined, size: 20),
+                              label: const Text('ZAHÁJIT SKENOVÁNÍ'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 

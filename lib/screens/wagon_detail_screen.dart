@@ -148,7 +148,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     late String newNotes;
     if (_selectedStatus.isNotEmpty) {
       if (_notesController.text.isNotEmpty) {
-        newNotes = '${_selectedStatus} - ${_notesController.text}';
+        newNotes = '$_selectedStatus - ${_notesController.text}';
       } else {
         newNotes = _selectedStatus;
       }
