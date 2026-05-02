@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
@@ -14,8 +15,9 @@ import 'wagon_detail_screen.dart';
 
 class ScanScreenFixed extends StatefulWidget {
   final String? inventoryId;
+  final List<String>? initialWagonNumbers;
 
-  const ScanScreenFixed({super.key, this.inventoryId});
+  const ScanScreenFixed({super.key, this.inventoryId, this.initialWagonNumbers});
 
   @override
   State<ScanScreenFixed> createState() => _ScanScreenFixedState();
@@ -36,6 +38,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   String? _currentInventoryId;
   int _nextOrderNumber = 1;
   String? _currentLocation;
+  String? _statusMessage;
+  Color _statusColor = Colors.green;
+  Timer? _statusTimer;
 
   Future<void> _toggleFlash() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
@@ -65,15 +70,17 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     super.initState();
     _currentInventoryId = widget.inventoryId;
 
+    if (widget.initialWagonNumbers != null) {
+      _detectedNumbers.addAll(widget.initialWagonNumbers!);
+    }
+
     if (_isMobilePlatform) {
       // Vylepšený TextRecognizer s vyšší citlivostí
       _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
       _initializeCamera();
-      _loadNextOrderNumber();
-      _loadTotalWagonCount(); // Načteme celkový počet vozů v soupisu
-      _getCurrentLocation(); // Získáme lokaci hned na začátku
+      _loadWagonStats();
+      _getCurrentLocation();
 
-      // Pokud nemáme existující soupis, zobrazíme dialog pro pojmenování
       if (_currentInventoryId == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showNameDialog();
@@ -82,7 +89,6 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     }
   }
 
-  // METODA PRO ZÍSKÁNÍ AKTUÁLNÍ LOKACE
   Future<void> _getCurrentLocation() async {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -133,35 +139,19 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     }
   }
 
-  Future<void> _loadTotalWagonCount() async {
+  Future<void> _loadWagonStats() async {
     if (_currentInventoryId == null) return;
-
     try {
       final wagons = await InventoryService.getWagonNumbersForInventory(
           _currentInventoryId!);
       if (mounted) {
         setState(() {
           _totalWagonCount = wagons.length;
+          _nextOrderNumber = wagons.length + 1;
         });
       }
     } catch (e) {
-      debugPrint('Chyba při načítání počtu vozů: $e');
-    }
-  }
-
-  Future<void> _loadNextOrderNumber() async {
-    if (_currentInventoryId != null) {
-      try {
-        final wagonNumbers = await InventoryService.getWagonNumbersForInventory(
-            _currentInventoryId!);
-        if (mounted) {
-          setState(() {
-            _nextOrderNumber = wagonNumbers.length + 1;
-          });
-        }
-      } catch (e) {
-        debugPrint('Chyba při načítání soupisu: $e');
-      }
+      debugPrint('Chyba při načítání soupisu: $e');
     }
   }
 
@@ -214,6 +204,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     // Okamžité zastavení zpracování
     _isDisposing = true;
     _isProcessing = true;
+    _statusTimer?.cancel();
 
     // Zjednodušené uvolnění - žádné dispose() volání
     if (_cameraController != null) {
@@ -348,12 +339,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           }
         } else {
           // Žádná čísla vůbec
-          _showMessage('Nenalezena žádná čísla vozů');
+          _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
         }
       } else {
         // Žádná čísla detekována - zvýšit počet neúspěšných snímků
         _failedScanCount++;
-        _showMessage('Nenalezena žádná čísla vozů');
+        _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
 
         // Pokud máme 2 neúspěšné snímky za sebou, nabídnout ruční zadání
         if (_failedScanCount >= 2) {
@@ -376,58 +367,88 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   List<String> _extractWagonNumbers(String text) {
     debugPrint('Extrahuji čísla z textu: "$text"');
 
-    // UIC číslo: XX XX XXXX XXX-X (12 číslic)
-    //   Skupina 1: 2 číslice (typ/stát)
-    //   Skupina 2: 2 číslice (stát/typ)
-    //   Skupina 3: XXXX XXX-X (8 číslic včetně kontrolní)
+    // UIC číslo: 12 číslic, formát XX XX XXXX XXX-X
+    // KČ = kontrolní číslice (poslední), předchází jí pomlčka nebo mezera.
 
-    // POKUS 1: Celý UIC formát na jednom řádku – "31 54 4854 269-8"
-    final singleLineUIC = RegExp(
-        r'(?<![0-9])([0-9]{2})\s+([0-9]{2})\s+([0-9]{4})\s+([0-9]{3})-([0-9])(?![0-9])');
+    // Pomlčka před KČ – rozpoznáváme i unicode varianty a prosté mezery.
+    const kc = r'[\-–— ]';
 
-    final singleMatch = singleLineUIC.firstMatch(text);
-    if (singleMatch != null) {
-      final number = singleMatch.group(1)! +
-          singleMatch.group(2)! +
-          singleMatch.group(3)! +
-          singleMatch.group(4)! +
-          singleMatch.group(5)!;
-      debugPrint('UIC nalezeno v jednom řádku: $number');
-      return [number];
+    // POKUS 1: Standardní formát jedním řádkem – "31 54 4854 269-8"
+    // Povoleny unicode pomlčky i mezera před KČ.
+    final p1 = RegExp(
+        r'(?<![0-9])([0-9]{2})\s+([0-9]{2})\s+([0-9]{4})\s+([0-9]{3})' +
+            kc +
+            r'([0-9])(?![0-9])');
+    final m1 = p1.firstMatch(text);
+    if (m1 != null) {
+      final num = m1.group(1)! + m1.group(2)! + m1.group(3)! + m1.group(4)! + m1.group(5)!;
+      debugPrint('UIC P1: $num');
+      return [num];
     }
 
-    // POKUS 2: UIC formát rozdělený do více řádků
-    // Třetí skupina "XXXX XXX-X" může být na jiném řádku než skupiny 1 a 2.
-    // Řádky se skupinami 1 a 2 mohou obsahovat i jiný text (např. "31 TEN", "54 CZ-ČDC").
-    //
-    // Strategie: najdeme třetí skupinu v textu, pak vyhledáme v textu PŘED ní
-    // poslední dvě samostatné 2místné číselné skupiny – ty jsou skupiny 1 a 2.
-    final thirdGroupPattern =
-        RegExp(r'(?<![0-9])([0-9]{4})\s+([0-9]{3})-([0-9])(?![0-9])');
+    // POKUS 2: OCR rozdělil 4-místnou skupinu na dvě 2-místné – "31 54 48 54 269-8"
+    final p2 = RegExp(
+        r'(?<![0-9])([0-9]{2})\s+([0-9]{2})\s+([0-9]{2})\s+([0-9]{2})\s+([0-9]{3})' +
+            kc +
+            r'([0-9])(?![0-9])');
+    final m2 = p2.firstMatch(text);
+    if (m2 != null) {
+      final num = m2.group(1)! + m2.group(2)! + m2.group(3)! + m2.group(4)! + m2.group(5)! + m2.group(6)!;
+      debugPrint('UIC P2 (split XXXX): $num');
+      return [num];
+    }
 
-    // Samostatná 2místná číslovka: obklopena ne-číslicemi (mezerou, textem, koncem řádku…)
+    // POKUS 3: Stripping řádků – odstraníme vše kromě číslic a hledáme přesně 12.
+    // Zachytí jakékoli oddělovače: tečky, lomítka, žádný oddělovač, pomlčku jako mezeru…
+    for (final line in text.split(RegExp(r'\r?\n'))) {
+      final digits = line.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.length == 12) {
+        debugPrint('UIC P3 (strip line): $digits  ←  "$line"');
+        return [digits];
+      }
+    }
+
+    // POKUS 4: Flexibilní oddělovače v bloku textu (max 3 ne-číslice na hranici, bez \n).
+    // XXXX varianta i split-XXXX varianta.
+    final p4a = RegExp(
+        r'(?<![0-9])([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{4})[^0-9\n]{0,3}([0-9]{3})[^0-9\n]{0,2}([0-9])(?![0-9])');
+    final m4a = p4a.firstMatch(text);
+    if (m4a != null) {
+      final num = m4a.group(1)! + m4a.group(2)! + m4a.group(3)! + m4a.group(4)! + m4a.group(5)!;
+      debugPrint('UIC P4a (flex XXXX): $num');
+      return [num];
+    }
+
+    final p4b = RegExp(
+        r'(?<![0-9])([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{3})[^0-9\n]{0,2}([0-9])(?![0-9])');
+    final m4b = p4b.firstMatch(text);
+    if (m4b != null) {
+      final num = m4b.group(1)! + m4b.group(2)! + m4b.group(3)! + m4b.group(4)! + m4b.group(5)! + m4b.group(6)!;
+      debugPrint('UIC P4b (flex split): $num');
+      return [num];
+    }
+
+    // POKUS 5: Multi-line – třetí skupina "XXXX XXX-X" na jiném řádku.
+    // Povoleny unicode pomlčky i mezera před KČ.
+    final thirdGroupPattern =
+        RegExp(r'(?<![0-9])([0-9]{4})\s+([0-9]{3})' + kc + r'([0-9])(?![0-9])');
     final twoDigitPattern = RegExp(r'(?<![0-9])([0-9]{2})(?![0-9])');
 
     for (final thirdMatch in thirdGroupPattern.allMatches(text)) {
-      final thirdDigits = thirdMatch.group(1)! +
-          thirdMatch.group(2)! +
-          thirdMatch.group(3)!;
-
-      // Všechny standalone 2místné skupiny v textu před třetí skupinou (v pořadí výskytu)
+      final thirdDigits =
+          thirdMatch.group(1)! + thirdMatch.group(2)! + thirdMatch.group(3)!;
       final textBefore = text.substring(0, thirdMatch.start);
       final groups = twoDigitPattern.allMatches(textBefore).toList();
 
       debugPrint(
-          'Třetí skupina: $thirdDigits | 2místné skupiny před ní: ${groups.map((m) => m.group(1)).toList()}');
+          'P5 třetí skupina: $thirdDigits | 2místné skupiny: ${groups.map((m) => m.group(1)).toList()}');
 
       if (groups.length >= 2) {
-        // Bereme POSLEDNÍ dvě skupiny (nejblíže k třetí skupině = skupiny 1 a 2)
         final g1 = groups[groups.length - 2].group(1)!;
         final g2 = groups[groups.length - 1].group(1)!;
         final number = g1 + g2 + thirdDigits;
-
-        debugPrint('Sestaveno UIC: $g1 + $g2 + $thirdDigits = $number');
         if (number.length == 12) {
+          debugPrint('UIC P5 (multi-line): $number');
           return [number];
         }
       }
@@ -625,17 +646,20 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     }
   }
 
-  void _showError(String message) {
+  void _showOverlay(String message, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red));
+    _statusTimer?.cancel();
+    setState(() {
+      _statusMessage = message;
+      _statusColor = color;
+    });
+    _statusTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _statusMessage = null);
+    });
   }
 
-  void _showMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.green));
-  }
+  void _showError(String message) => _showOverlay(message, Colors.red);
+  void _showMessage(String message) => _showOverlay(message, Colors.green);
 
   Future<void> _openWagonDetail(String wagonNumber) async {
     if (_currentInventoryId == null) return;
@@ -747,6 +771,28 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                         ),
                       ),
                     ),
+                    if (_statusMessage != null)
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _statusColor.withValues(alpha: 0.92),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            _statusMessage!,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

@@ -26,13 +26,8 @@ class WagonDetailScreen extends StatefulWidget {
 class _WagonDetailScreenState extends State<WagonDetailScreen> {
   final TextEditingController _notesController = TextEditingController();
   String _selectedStatus = ''; // Výchozí žádný příznak
-  final List<String> _statuses = ['M', 'K', 'R1', '314'];
-  final Map<String, String> _statusDescriptions = {
-    'M': 'Zkontrolovat',
-    'K': 'Nenakládat / Po vyložení k opravě',
-    'R1': 'Brzda neupotřebitelná',
-    '314': 'Ještě použitelný',
-  };
+  final List<String> _statuses = WagonNumber.allFlags;
+  final Map<String, String> _statusDescriptions = WagonNumber.flagDescriptions;
 
   @override
   void initState() {
@@ -273,8 +268,8 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                   ? Icons.check_circle
                                   : Icons.error,
                               color: widget.wagon.isValid
-                                  ? Colors.green
-                                  : Colors.red,
+                                  ? ThemeService.kValidGreen
+                                  : ThemeService.kValidRed,
                               size: 32,
                             ),
                             const SizedBox(width: 16),
@@ -291,8 +286,8 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                                             fontSize: 24,
                                             fontWeight: FontWeight.bold,
                                             color: widget.wagon.isValid
-                                                ? Colors.green
-                                                : Colors.red,
+                                                ? ThemeService.kValidGreen
+                                                : ThemeService.kValidRed,
                                           ),
                                         ),
                                       ),

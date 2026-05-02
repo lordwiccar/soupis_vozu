@@ -61,7 +61,7 @@ flutter_launcher_icons:
 # Flutter Native Splash
 flutter_native_splash:
   # The color parameter sets the background color of the splash screen.
-  color: "#FFFFFF"
+  color: "#152028"
   
   # Use the updated splash.png image with proper sizing
   image: assets/splash.png
@@ -76,13 +76,13 @@ flutter_native_splash:
   # Set to true to disable the splash screen on Android 12+.
   android_12:
     # The color parameter sets the background color of the splash screen on Android 12+.
-    color: "#FFFFFF"
+    color: "#152028"
     
     # Use the updated splash.png for Android 12+ splash screen
     image: assets/splash.png
     
     # The icon_background_color parameter sets the background color of the icon on Android 12+.
-    icon_background_color: "#FFFFFF"
+    icon_background_color: "#152028"
     
     # Remove fullscreen mode for Android 12+
     # fullscreen: true

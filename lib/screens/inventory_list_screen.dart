@@ -15,7 +15,9 @@ import 'scan_screen_fixed.dart';
 import '../services/theme_service.dart';
 
 class InventoryListScreen extends StatefulWidget {
-  const InventoryListScreen({super.key});
+  final String? expandedInventoryId;
+
+  const InventoryListScreen({super.key, this.expandedInventoryId});
 
   @override
   State<InventoryListScreen> createState() => _InventoryListScreenState();
@@ -34,6 +36,9 @@ class _InventoryListScreenState extends State<InventoryListScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.expandedInventoryId != null) {
+      _expandedState[widget.expandedInventoryId!] = true;
+    }
     _loadInventories();
   }
 
@@ -798,12 +803,12 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     for (final flag in flagList) {
       final trimmedFlag = flag.trim();
       switch (trimmedFlag) {
-        case 'K':
-          return const Color(0xFFbde0fc); // Přesná modrá
-        case 'M':
-          return const Color(0xFFfcf5bd); // Přesná žlutá
-        case '314':
-          return const Color(0xFFbdfcf2); // Přesná tyrkysová
+        case WagonNumber.flagK:
+          return const Color(0xFFbde0fc);
+        case WagonNumber.flagM:
+          return const Color(0xFFfcf5bd);
+        case WagonNumber.flag314:
+          return const Color(0xFFbdfcf2);
       }
     }
     return null;
@@ -821,7 +826,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
     // Pokud notes obsahuje jen příznak(y) bez poznámky (např. "K" nebo "K + M")
     // vrať prázdný string
-    final knownFlags = ['K', 'M', '314', 'R1'];
+    final knownFlags = WagonNumber.allFlags;
     final trimmed = notes.trim();
     if (knownFlags.contains(trimmed)) return '';
 

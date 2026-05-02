@@ -43,6 +43,18 @@ class Inventory {
 }
 
 class WagonNumber {
+  static const String flagM   = 'M';
+  static const String flagK   = 'K';
+  static const String flagR1  = 'R1';
+  static const String flag314 = '314';
+  static const List<String> allFlags = [flagM, flagK, flagR1, flag314];
+  static const Map<String, String> flagDescriptions = {
+    flagM:   'Zkontrolovat',
+    flagK:   'Nenakládat / Po vyložení k opravě',
+    flagR1:  'Brzda neupotřebitelná',
+    flag314: 'Ještě použitelný',
+  };
+
   final String number;
   final String formattedNumber;
   final bool isValid;

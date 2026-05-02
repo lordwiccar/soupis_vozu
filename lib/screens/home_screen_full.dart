@@ -105,10 +105,27 @@ class _HomeScreenFullState extends State<HomeScreenFull>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Lottie.asset(
-                  'assets/wagon.json',
-                  width: double.infinity,
-                  fit: BoxFit.contain,
+                const SizedBox(height: 20),
+                ShaderMask(
+                  shaderCallback: (Rect bounds) {
+                    return const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.white,
+                        Colors.white,
+                        Colors.transparent,
+                      ],
+                      stops: [0.0, 0.18, 0.82, 1.0],
+                    ).createShader(bounds);
+                  },
+                  blendMode: BlendMode.dstIn,
+                  child: Lottie.asset(
+                    'assets/wagon.json',
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                  ),
                 ),
                 Expanded(
                   child: Center(
