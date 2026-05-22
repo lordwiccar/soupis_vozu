@@ -1068,7 +1068,23 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     final controller = TextEditingController(text: formattedNumber);
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final digits =
+              controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+          final digitCount = digits.length;
+          final isComplete = digitCount == 12;
+          final isValid =
+              isComplete && UicValidator.validateUicNumber(digits);
+
+          final Color borderColor;
+          if (isComplete) {
+            borderColor = isValid ? Colors.green : Colors.red;
+          } else {
+            borderColor = Colors.grey;
+          }
+
+          return AlertDialog(
         title: const Text('Opravit číslo vozu'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1078,9 +1094,30 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
             TextField(
                 controller: controller,
                 autofocus: true,
-                decoration: const InputDecoration(
-                    labelText: 'Číslo vozu', border: OutlineInputBorder()),
-                keyboardType: TextInputType.number),
+                keyboardType: TextInputType.number,
+                inputFormatters: [_UicInputFormatter()],
+                onChanged: (value) => setDialogState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Číslo vozu',
+                  hintText: 'XX XX XXXX XXX-X',
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: borderColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: isComplete
+                          ? borderColor
+                          : Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  counterText: '$digitCount / 12',
+                  counterStyle: TextStyle(
+                    color: isComplete
+                        ? (isValid ? Colors.green : Colors.red)
+                        : null,
+                  ),
+                )),
           ],
         ),
         actions: [
@@ -1125,6 +1162,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
             child: const Text('Uložit'),
           ),
         ],
+          );
+        },
       ),
     );
   }

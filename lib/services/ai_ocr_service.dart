@@ -1,7 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:http/http.dart' as http;
 import 'scan_settings_service.dart';
 
@@ -14,34 +12,15 @@ class AiOcrService {
       'If multiple UIC numbers are visible, return each on a separate line. '
       'If no UIC number can be found, return only the word NONE.';
 
-  // Max šířka obrázku odeslaného do API – redukuje payload pod limity Anthropic (5 MB) i OpenAI.
-  static const _maxImageWidth = 1024;
-
   static Future<List<String>> extractWagonNumbers(
       String imagePath, AiProvider provider, String apiKey) async {
-    final originalBytes = await File(imagePath).readAsBytes();
-    final resizedBytes = await _resizeImageToPng(originalBytes);
-    final base64Image = base64Encode(resizedBytes);
+    final base64Image = base64Encode(await File(imagePath).readAsBytes());
 
     final raw = provider == AiProvider.openai
         ? await _callOpenAi(base64Image, apiKey)
         : await _callClaude(base64Image, apiKey);
 
     return _parseResponse(raw);
-  }
-
-  /// Zmenší obrázek na max [_maxImageWidth] px šířky a vrátí PNG bajty.
-  static Future<List<int>> _resizeImageToPng(List<int> bytes) async {
-    final codec = await ui.instantiateImageCodec(
-      bytes is Uint8List ? bytes : Uint8List.fromList(bytes),
-      targetWidth: _maxImageWidth,
-    );
-    final frame = await codec.getNextFrame();
-    final image = frame.image;
-    final byteData =
-        await image.toByteData(format: ui.ImageByteFormat.png);
-    image.dispose();
-    return byteData!.buffer.asUint8List();
   }
 
   static Future<String> _callOpenAi(
@@ -63,7 +42,7 @@ class AiOcrService {
                   {
                     'type': 'image_url',
                     'image_url': {
-                      'url': 'data:image/png;base64,$base64Image',
+                      'url': 'data:image/jpeg;base64,$base64Image',
                     },
                   },
                   {'type': 'text', 'text': _prompt},
@@ -109,7 +88,7 @@ class AiOcrService {
                     'type': 'image',
                     'source': {
                       'type': 'base64',
-                      'media_type': 'image/png',
+                      'media_type': 'image/jpeg',
                       'data': base64Image,
                     },
                   },
