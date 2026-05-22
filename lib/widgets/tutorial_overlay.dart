@@ -33,6 +33,11 @@ const List<TutorialStep> kTutorialSteps = [
     body: 'Toto je obrazovka Nastavení. Přidejte sem e-mailové kontakty dispečerů — na tyto adresy pak budete odesílat hotové soupisy jedním klepnutím.',
   ),
   TutorialStep(
+    icon: Icons.document_scanner_outlined,
+    title: 'Rychlé a Kvalitní skenování',
+    body: 'V záložce Skenování si zvolíte režim rozpoznávání. Rychlé využívá místní ML Kit a funguje offline. Kvalitní odesílá fotografii AI (GPT-4o nebo Claude Haiku) — dosahuje vyšší přesnosti, ale vyžaduje připojení k internetu a vlastní API klíč, který zadáte přímo zde v nastavení.',
+  ),
+  TutorialStep(
     icon: Icons.dark_mode_outlined,
     title: 'Motiv aplikace',
     body: 'V nastavení si přepněte motiv dle svých potřeb. Tmavý motiv se hodí pro práci za šera nebo na přímém slunci.',

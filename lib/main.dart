@@ -36,8 +36,8 @@ class _SoupisVozuAppState extends State<SoupisVozuApp> {
 
   // Indexy kroků, které mají konkrétní navigaci
   static const _stepSettings  = 2; // přejít do nastavení
-  static const _stepScan      = 4; // přejít na scan screen
-  static const _stepInventory = 7; // přejít do seznamu soupisů
+  static const _stepScan      = 5; // přejít na scan screen
+  static const _stepInventory = 8; // přejít do seznamu soupisů
 
   @override
   void initState() {

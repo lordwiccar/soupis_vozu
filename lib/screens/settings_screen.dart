@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
+import '../services/scan_settings_service.dart';
 import 'contacts_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -22,11 +23,17 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _isDarkMode = false;
   late TabController _tabController;
 
+  // Nastavení skenování
+  ScanMode _scanMode = ScanMode.quick;
+  AiProvider? _aiProvider;
+  bool _hasApiKey = false;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadThemePreference();
+    _loadScanSettings();
   }
 
   @override
@@ -40,6 +47,19 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() => _isDarkMode = themeMode == ThemeMode.dark);
   }
 
+  Future<void> _loadScanSettings() async {
+    final mode = await ScanSettingsService.getScanMode();
+    final provider = await ScanSettingsService.getAiProvider();
+    final key = await ScanSettingsService.getApiKey();
+    if (mounted) {
+      setState(() {
+        _scanMode = mode;
+        _aiProvider = provider;
+        _hasApiKey = key != null && key.isNotEmpty;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,8 +69,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           controller: _tabController,
           tabs: const [
             Tab(icon: Icon(Icons.contacts_outlined), text: 'Adresář'),
-            Tab(icon: Icon(Icons.palette_outlined),  text: 'Motiv'),
-            Tab(icon: Icon(Icons.info_outline),       text: 'O aplikaci'),
+            Tab(icon: Icon(Icons.document_scanner_outlined), text: 'Skenování'),
+            Tab(icon: Icon(Icons.palette_outlined), text: 'Motiv'),
+            Tab(icon: Icon(Icons.info_outline), text: 'O aplikaci'),
           ],
         ),
       ),
@@ -62,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               controller: _tabController,
               children: [
                 _buildContactsTab(),
+                _buildScanTab(),
                 _buildThemeTab(),
                 _buildAboutTab(),
               ],
@@ -72,6 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ─── ADRESÁŘ ────────────────────────────────────────────────────────────────
+
   Widget _buildContactsTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -79,7 +103,8 @@ class _SettingsScreenState extends State<SettingsScreen>
         _buildSettingsTile(
           icon: Icons.contacts_outlined,
           title: 'Správa kontaktů',
-          subtitle: 'Přidávejte, upravujte a mažte kontakty pro odesílání soupisů',
+          subtitle:
+              'Přidávejte, upravujte a mažte kontakty pro odesílání soupisů',
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
           onTap: () => Navigator.push(
             context,
@@ -97,6 +122,226 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ─── SKENOVÁNÍ ──────────────────────────────────────────────────────────────
+
+  Widget _buildScanTab() {
+    final bool qualityMode = _scanMode == ScanMode.quality;
+    final bool providerChosen = _aiProvider != null;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildSectionLabel('REŽIM SKENOVÁNÍ'),
+        RadioGroup<ScanMode>(
+          groupValue: _scanMode,
+          onChanged: (v) async {
+            if (v == null) return;
+            setState(() => _scanMode = v);
+            await ScanSettingsService.setScanMode(v);
+          },
+          child: Column(children: [
+            _buildScanModeRadio(
+              icon: Icons.flash_on_outlined,
+              title: 'Rychlé',
+              subtitle: 'Lokální ML Kit – funguje offline, bez API klíče',
+              value: ScanMode.quick,
+            ),
+            _buildScanModeRadio(
+              icon: Icons.psychology_outlined,
+              title: 'Kvalitní (AI)',
+              subtitle:
+                  'Rozpoznávání pomocí AI – vyžaduje internet a API klíč',
+              value: ScanMode.quality,
+            ),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        _buildSectionLabel('AI MODEL', disabled: !qualityMode),
+        Opacity(
+          opacity: qualityMode ? 1.0 : 0.35,
+          child: IgnorePointer(
+            ignoring: !qualityMode,
+            child: RadioGroup<AiProvider?>(
+              groupValue: _aiProvider,
+              onChanged: (v) async {
+                setState(() => _aiProvider = v);
+                await ScanSettingsService.setAiProvider(v);
+              },
+              child: Column(children: [
+                _buildProviderRadio(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'GPT-4o  (OpenAI)',
+                  subtitle: 'Vyžaduje OpenAI API klíč (sk-…)',
+                  value: AiProvider.openai,
+                ),
+                _buildProviderRadio(
+                  icon: Icons.smart_toy_outlined,
+                  title: 'Claude Haiku  (Anthropic)',
+                  subtitle: 'Vyžaduje Anthropic API klíč (sk-ant-…)',
+                  value: AiProvider.claude,
+                ),
+              ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildSectionLabel('API KLÍČ',
+            disabled: !qualityMode || !providerChosen),
+        _buildApiKeyTile(disabled: !qualityMode || !providerChosen),
+      ],
+    );
+  }
+
+  Widget _buildSectionLabel(String text, {bool disabled = false}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+      child: Opacity(
+        opacity: disabled ? 0.35 : 1.0,
+        child: Text(
+          text,
+          style: TextStyle(
+            color: ThemeService.kRailAmber,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScanModeRadio({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required ScanMode value,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: RadioListTile<ScanMode>(
+        value: value,
+        title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+        subtitle:
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        secondary: Icon(icon, color: ThemeService.kRailAmber),
+        tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
+        activeColor: ThemeService.kRailAmber,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Widget _buildProviderRadio({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required AiProvider value,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: RadioListTile<AiProvider?>(
+        value: value,
+        title: Text(title, style: Theme.of(context).textTheme.titleSmall),
+        subtitle:
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        secondary: Icon(icon, color: ThemeService.kRailAmber),
+        tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
+        activeColor: ThemeService.kRailAmber,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Widget _buildApiKeyTile({required bool disabled}) {
+    return Opacity(
+      opacity: disabled ? 0.35 : 1.0,
+      child: IgnorePointer(
+        ignoring: disabled,
+        child: _buildSettingsTile(
+          icon: _hasApiKey ? Icons.lock : Icons.lock_open_outlined,
+          title: 'API klíč',
+          subtitle: _hasApiKey ? 'Klíč je nastaven' : 'Klíč není nastaven',
+          trailing: _hasApiKey
+              ? const Icon(Icons.check_circle,
+                  color: Colors.green, size: 20)
+              : const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: _showApiKeyDialog,
+        ),
+      ),
+    );
+  }
+
+  void _showApiKeyDialog() {
+    final controller = TextEditingController();
+    bool obscure = true;
+    final providerName =
+        _aiProvider == AiProvider.openai ? 'OpenAI' : 'Anthropic';
+    final hintText =
+        _aiProvider == AiProvider.openai ? 'sk-…' : 'sk-ant-…';
+
+    // Předvyplnit existující klíč (zobrazí se zakrytý)
+    ScanSettingsService.getApiKey().then((key) {
+      if (key != null && key.isNotEmpty) controller.text = key;
+    });
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('$providerName API klíč'),
+          content: TextField(
+            controller: controller,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              labelText: 'API klíč',
+              hintText: hintText,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(
+                    obscure ? Icons.visibility : Icons.visibility_off),
+                onPressed: () =>
+                    setDialogState(() => obscure = !obscure),
+              ),
+            ),
+          ),
+          actions: [
+            if (_hasApiKey)
+              TextButton(
+                onPressed: () async {
+                  await ScanSettingsService.setApiKey(null);
+                  if (mounted) setState(() => _hasApiKey = false);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text('Smazat',
+                    style: TextStyle(color: Colors.red)),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušit'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final key = controller.text.trim();
+                if (key.isNotEmpty) {
+                  await ScanSettingsService.setApiKey(key);
+                  if (mounted) setState(() => _hasApiKey = true);
+                  if (context.mounted) Navigator.pop(context);
+                }
+              },
+              child: const Text('Uložit'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── MOTIV ──────────────────────────────────────────────────────────────────
+
   Widget _buildThemeTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -110,6 +355,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       ],
     );
   }
+
+  // ─── O APLIKACI ─────────────────────────────────────────────────────────────
 
   Widget _buildAboutTab() {
     return ListView(
@@ -133,6 +380,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  // ─── SDÍLENÉ WIDGETY ────────────────────────────────────────────────────────
+
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
@@ -143,14 +392,13 @@ class _SettingsScreenState extends State<SettingsScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
       child: ListTile(
-        leading: Icon(
-          icon,
-          color: ThemeService.kRailAmber,
-        ),
+        leading: Icon(icon, color: ThemeService.kRailAmber),
         title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        subtitle:
+            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         trailing: trailing,
-        tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
+        tileColor:
+            isDark ? ThemeService.kRailCharcoal : Colors.white,
         onTap: onTap,
       ),
     );
@@ -178,20 +426,29 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 16),
               const Text('1. V sekci "Adresář" přidejte nový kontakt.'),
               const SizedBox(height: 8),
-              const Text('Před odesláním soupisu si vyberete kontakt z adresáře, na který se soupis odešle.'),
+              const Text(
+                  'Před odesláním soupisu si vyberete kontakt z adresáře, na který se soupis odešle.'),
               const SizedBox(height: 16),
-              const Text('2. Zaškrtněte políčko "Použít jako příjemce v kopii", pokud chcete sestavený soupis zasílat na kontakt vždy, společně s vybraným kontaktem.'),
+              const Text(
+                  '2. Zaškrtněte políčko "Použít jako příjemce v kopii", pokud chcete sestavený soupis zasílat na kontakt vždy, společně s vybraným kontaktem.'),
               const SizedBox(height: 8),
               Text(
                 '(Příklad: Vyberete kontakt sloužícího dispečera, v kopii je vedoucí útvaru nebo sdílený e-mail)',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(fontStyle: FontStyle.italic),
               ),
               const SizedBox(height: 16),
-              const Text('Kontakt označený jako příjemce v Kopii se již nebude nabízet pro výběr do pole "Komu".'),
+              const Text(
+                  'Kontakt označený jako příjemce v Kopii se již nebude nabízet pro výběr do pole "Komu".'),
               const SizedBox(height: 16),
               Text(
                 'Poznámka: Jako "Příjemce v kopii" může být označen jen jeden kontakt.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(fontStyle: FontStyle.italic),
               ),
             ],
           ),
@@ -217,17 +474,26 @@ class _SettingsScreenState extends State<SettingsScreen>
             ListTile(
               leading: const Icon(Icons.light_mode),
               title: const Text('Světlý motiv'),
-              onTap: () { Navigator.pop(context); _changeTheme(ThemeMode.light); },
+              onTap: () {
+                Navigator.pop(context);
+                _changeTheme(ThemeMode.light);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.dark_mode),
               title: const Text('Tmavý motiv'),
-              onTap: () { Navigator.pop(context); _changeTheme(ThemeMode.dark); },
+              onTap: () {
+                Navigator.pop(context);
+                _changeTheme(ThemeMode.dark);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.brightness_auto),
               title: const Text('Adaptace podle systému'),
-              onTap: () { Navigator.pop(context); _changeTheme(ThemeMode.system); },
+              onTap: () {
+                Navigator.pop(context);
+                _changeTheme(ThemeMode.system);
+              },
             ),
           ],
         ),
@@ -260,7 +526,8 @@ class _SettingsScreenState extends State<SettingsScreen>
             const SizedBox(height: 8),
             const Text('Verze: 1.0.0'),
             const SizedBox(height: 8),
-            const Text('Aplikace pro vytváření soupisů železničních vozů.'),
+            const Text(
+                'Aplikace pro vytváření soupisů železničních vozů.'),
             const SizedBox(height: 16),
             const Center(child: Text('© White Whale Media 2026')),
             const SizedBox(height: 16),
@@ -281,13 +548,15 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _openLinkedIn() async {
-    final url = Uri.parse('https://www.linkedin.com/in/daniel-macho-8ab0477a/');
+    final url =
+        Uri.parse('https://www.linkedin.com/in/daniel-macho-8ab0477a/');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Nelze otevřít odkaz na LinkedIn profil')),
+          const SnackBar(
+              content: Text('Nelze otevřít odkaz na LinkedIn profil')),
         );
       }
     }

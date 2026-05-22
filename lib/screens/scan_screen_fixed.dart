@@ -8,7 +8,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:soupis_vozu/models/inventory.dart';
 import 'package:soupis_vozu/services/inventory_service.dart';
 import 'package:soupis_vozu/services/uic_validator.dart';
+import 'package:soupis_vozu/services/scan_settings_service.dart';
+import 'package:soupis_vozu/services/ai_ocr_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'wagon_detail_screen.dart';
@@ -21,6 +24,31 @@ class ScanScreenFixed extends StatefulWidget {
 
   @override
   State<ScanScreenFixed> createState() => _ScanScreenFixedState();
+}
+
+class _UicInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.length > 12 ? digits.substring(0, 12) : digits;
+
+    // Formát: XX XX XXXX XXX-X
+    final buffer = StringBuffer();
+    for (int i = 0; i < limited.length; i++) {
+      if (i == 2 || i == 4 || i == 8) buffer.write(' ');
+      if (i == 11) buffer.write('-');
+      buffer.write(limited[i]);
+    }
+
+    final formatted = buffer.toString();
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
 }
 
 class _ScanScreenFixedState extends State<ScanScreenFixed> {
@@ -275,91 +303,101 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       final image = await _cameraController!.takePicture();
       if (_isDisposing) return;
 
-      final inputImage = InputImage.fromFilePath(image.path);
+      final scanMode = await ScanSettingsService.getScanMode();
+      final wagonNumbers = scanMode == ScanMode.quality
+          ? await _extractViaAi(image.path)
+          : await _extractViaMlKit(image.path);
 
-      // Vylepšené zpracování pro venkovní podmínky
-      debugPrint('=== ZPRACOVÁNÍ OBRAZU ===');
-      debugPrint('Cesta k obrázku: ${image.path}');
-      debugPrint('Velikost souboru: ${await File(image.path).length()} bytes');
-
-      final RecognizedText recognizedText =
-          await _textRecognizer.processImage(inputImage);
-
-      debugPrint('ML Kit detekoval text: "${recognizedText.text}"');
-      debugPrint('Počet bloků textu: ${recognizedText.blocks.length}');
-
-      // Detailní logování pro ladění
-      for (final block in recognizedText.blocks) {
-        debugPrint('Text blok: "${block.text}"');
-        for (final line in block.lines) {
-          debugPrint('  Řádka: "${line.text}"');
-          for (final element in line.elements) {
-            debugPrint('    Prvek: "${element.text}"');
-          }
-        }
-      }
-      debugPrint('=== KONEC ZPRACOVÁNÍ ===');
-
-      final wagonNumbers = _extractWagonNumbers(recognizedText.text);
-
-      if (wagonNumbers.isNotEmpty) {
-        // Resetovat počet neúspěšných snímků při úspěšné detekci
-        _failedScanCount = 0;
-
-        // Rozdělíme čísla na validní a nevalidní
-        final validNumbers = <String>[];
-        final invalidNumbers = <String>[];
-
-        for (final number in wagonNumbers) {
-          if (UicValidator.validateUicNumber(number)) {
-            validNumbers.add(number);
-          } else {
-            invalidNumbers.add(number);
-          }
-        }
-
-        // Pokud máme více validních čísel, zobrazíme dialog pro výběr
-        if (validNumbers.length > 1) {
-          final selectedNumber = await _showWagonSelectionDialog(validNumbers);
-          if (selectedNumber == null) {
-            if (mounted) setState(() => _isProcessing = false);
-            return;
-          }
-          // Přidáme pouze vybrané číslo
-          await _addSelectedWagon(selectedNumber);
-        } else if (validNumbers.length == 1) {
-          // Přidáme jediné validní číslo
-          await _addSelectedWagon(validNumbers.first);
-        } else if (invalidNumbers.isNotEmpty) {
-          // Žádná validní čísla, ale máme nevalidní - zobrazíme dialog pro opravu prvého
-          final firstInvalid = invalidNumbers.first;
-          if (mounted && !_isDisposing) {
-            _showValidationResult(UicValidator.formatUicNumber(firstInvalid),
-                false, firstInvalid, _nextOrderNumber);
-          }
-        } else {
-          // Žádná čísla vůbec
-          _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
-        }
-      } else {
-        // Žádná čísla detekována - zvýšit počet neúspěšných snímků
-        _failedScanCount++;
-        _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
-
-        // Pokud máme 2 neúspěšné snímky za sebou, nabídnout ruční zadání
-        if (_failedScanCount >= 2) {
-          final manualNumber = await _showManualInputDialog();
-          if (manualNumber != null) {
-            await _addSelectedWagon(manualNumber);
-          }
-          _failedScanCount = 0; // Resetovat počet
-        }
-      }
+      await _processWagonNumbers(wagonNumbers);
     } catch (e) {
       if (!_isDisposing) _showError('Chyba při zpracování: $e');
     } finally {
       if (mounted && !_isDisposing) {
         setState(() => _isProcessing = false);
+      }
+    }
+  }
+
+  Future<List<String>> _extractViaMlKit(String imagePath) async {
+    final inputImage = InputImage.fromFilePath(imagePath);
+
+    debugPrint('=== ML KIT ZPRACOVÁNÍ ===');
+    debugPrint('Cesta: $imagePath');
+    debugPrint('Velikost: ${await File(imagePath).length()} bytes');
+
+    final RecognizedText recognizedText =
+        await _textRecognizer.processImage(inputImage);
+
+    debugPrint('Detekovaný text: "${recognizedText.text}"');
+    debugPrint('Bloků: ${recognizedText.blocks.length}');
+    for (final block in recognizedText.blocks) {
+      debugPrint('Blok: "${block.text}"');
+      for (final line in block.lines) {
+        debugPrint('  Řádka: "${line.text}"');
+        for (final element in line.elements) {
+          debugPrint('    Prvek: "${element.text}"');
+        }
+      }
+    }
+    debugPrint('=== KONEC ===');
+
+    return _extractWagonNumbers(recognizedText.text);
+  }
+
+  Future<List<String>> _extractViaAi(String imagePath) async {
+    final provider = await ScanSettingsService.getAiProvider();
+    final apiKey = await ScanSettingsService.getApiKey();
+
+    if (provider == null || apiKey == null || apiKey.isEmpty) {
+      throw Exception(
+          'Nakonfigurujte AI skenování v Nastavení → Skenování');
+    }
+
+    return AiOcrService.extractWagonNumbers(imagePath, provider, apiKey);
+  }
+
+  Future<void> _processWagonNumbers(List<String> wagonNumbers) async {
+    if (wagonNumbers.isNotEmpty) {
+      _failedScanCount = 0;
+
+      final validNumbers = <String>[];
+      final invalidNumbers = <String>[];
+      for (final number in wagonNumbers) {
+        if (UicValidator.validateUicNumber(number)) {
+          validNumbers.add(number);
+        } else {
+          invalidNumbers.add(number);
+        }
+      }
+
+      if (validNumbers.length > 1) {
+        final selectedNumber = await _showWagonSelectionDialog(validNumbers);
+        if (selectedNumber == null) {
+          if (mounted) setState(() => _isProcessing = false);
+          return;
+        }
+        await _addSelectedWagon(selectedNumber);
+      } else if (validNumbers.length == 1) {
+        await _addSelectedWagon(validNumbers.first);
+      } else if (invalidNumbers.isNotEmpty) {
+        final firstInvalid = invalidNumbers.first;
+        if (mounted && !_isDisposing) {
+          _showValidationResult(UicValidator.formatUicNumber(firstInvalid),
+              false, firstInvalid, _nextOrderNumber);
+        }
+      } else {
+        _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
+      }
+    } else {
+      _failedScanCount++;
+      _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
+
+      if (_failedScanCount >= 2) {
+        final manualNumber = await _showManualInputDialog();
+        if (manualNumber != null) {
+          await _addSelectedWagon(manualNumber);
+        }
+        _failedScanCount = 0;
       }
     }
   }
@@ -517,60 +555,77 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
 
     return showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ruční zadání čísla vozu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Číslo vozu se nepodařilo přečíst. Zadejte ho ručně:',
-              style: TextStyle(fontSize: 14),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+          final digitCount = digits.length;
+          final isComplete = digitCount == 12;
+          final isValid = isComplete && UicValidator.validateUicNumber(digits);
+
+          final Color borderColor;
+          if (isComplete) {
+            borderColor = isValid ? Colors.green : Colors.red;
+          } else {
+            borderColor = Colors.grey;
+          }
+
+          return AlertDialog(
+            title: const Text('Ruční zadání čísla vozu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Číslo vozu se nepodařilo přečíst. Zadejte ho ručně:',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [_UicInputFormatter()],
+                  decoration: InputDecoration(
+                    labelText: 'Číslo vozu',
+                    hintText: 'XX XX XXXX XXX-X',
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: isComplete
+                            ? borderColor
+                            : Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                    counterText: '$digitCount / 12',
+                    counterStyle: TextStyle(
+                      color: isComplete
+                          ? (isValid ? Colors.green : Colors.red)
+                          : null,
+                    ),
+                  ),
+                  onChanged: (value) => setDialogState(() {}),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Číslo vozu',
-                hintText: 'Např. 818012345',
-                border: OutlineInputBorder(),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Zrušit'),
               ),
-              maxLength: 12,
-              onChanged: (value) {
-                // Automatické formátování při zadávání
-                if (value.length >= 8) {
-                  final formatted = UicValidator.formatUicNumber(value);
-                  controller.text = formatted;
-                  controller.selection = TextSelection.fromPosition(
-                    TextPosition(offset: formatted.length),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Zrušit'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final input = controller.text.trim();
-              if (input.isNotEmpty) {
-                // Zkusíme validovat zadané číslo
-                if (UicValidator.validateUicNumber(input)) {
-                  Navigator.of(context).pop(input);
-                } else {
-                  // Zobrazíme varování, ale necháme uživatele pokračovat
-                  Navigator.of(context).pop(input);
-                }
-              }
-            },
-            child: const Text('PŘIDAT'),
-          ),
-        ],
+              ElevatedButton(
+                onPressed: () {
+                  final input = controller.text.trim();
+                  if (input.isNotEmpty) {
+                    Navigator.of(context).pop(input);
+                  }
+                },
+                child: const Text('PŘIDAT'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
