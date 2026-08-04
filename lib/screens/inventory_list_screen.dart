@@ -9,6 +9,7 @@ import '../models/inventory.dart';
 import '../services/inventory_service.dart';
 import '../services/contact_service.dart';
 import '../services/uic_validator.dart';
+import '../services/decimal_input.dart';
 import '../models/contact.dart';
 import 'wagon_detail_screen.dart';
 import 'scan_screen_fixed.dart';
@@ -552,6 +553,119 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     return 'Platných: $validCount/$totalCount';
   }
 
+  // ─── SOUČTY TECHNICKÝCH ÚDAJŮ ZA SOUPIS ─────────────────────────────────
+  // Zobrazují se jen v appce na kartě soupisu, ne v exportované tabulce.
+
+  Widget _buildTechnicalTotals(Inventory inventory) {
+    double? totalWeight;
+    double? totalBrakeWeightG;
+    double? totalBrakeWeightP;
+    double? totalHandbrakeKn;
+    int handbrakeCount = 0;
+    double? totalLength;
+
+    for (final wagon in inventory.wagonNumbers) {
+      if (wagon.weight != null) {
+        totalWeight = (totalWeight ?? 0) + wagon.weight!;
+      }
+      if (wagon.brakeWeightG != null) {
+        totalBrakeWeightG = (totalBrakeWeightG ?? 0) + wagon.brakeWeightG!;
+      }
+      if (wagon.brakeWeightP != null) {
+        totalBrakeWeightP = (totalBrakeWeightP ?? 0) + wagon.brakeWeightP!;
+      }
+      if (wagon.handbrake) {
+        handbrakeCount++;
+        if (wagon.handbrakeForceKn != null) {
+          totalHandbrakeKn =
+              (totalHandbrakeKn ?? 0) + wagon.handbrakeForceKn!;
+        }
+      }
+      if (wagon.length != null) {
+        totalLength = (totalLength ?? 0) + wagon.length!;
+      }
+    }
+
+    final chips = <Widget>[
+      if (totalWeight != null)
+        _buildTotalChip('Hmotnost', '${formatDecimal(totalWeight)} t'),
+      if (totalBrakeWeightG != null)
+        _buildTotalChip(
+            'Brzdící váha G', '${formatDecimal(totalBrakeWeightG)} t'),
+      if (totalBrakeWeightP != null)
+        _buildTotalChip(
+            'Brzdící váha P', '${formatDecimal(totalBrakeWeightP)} t'),
+      if (handbrakeCount > 0)
+        _buildTotalChip(
+          'Ruční brzdy',
+          totalHandbrakeKn != null
+              ? '${formatDecimal(totalHandbrakeKn)} kN ($handbrakeCount×)'
+              : '$handbrakeCount×',
+        ),
+      if (totalLength != null)
+        _buildTotalChip('Délka', '${formatDecimal(totalLength)} m'),
+    ];
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: ThemeService.kRailAmber.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: ThemeService.kRailAmber.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Součty za soupis:',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 6, children: chips),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotalChip(String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? ThemeService.kRailCream : ThemeService.kRailBlack;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$label: ',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+              decoration: TextDecoration.none,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              decoration: TextDecoration.none,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _editInventoryName(
       String inventoryId, String currentName) async {
     if (!mounted) return;
@@ -699,10 +813,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
         final currentWagon = wagons[i];
         await InventoryService.updateWagonNumber(
           inventoryId,
-          currentWagon.number,
-          currentWagon.formattedNumber,
-          currentWagon.notes ?? '',
-          currentWagon.isValid,
+          currentWagon,
           newOrderNumber: i + 1,
         );
       }
@@ -759,10 +870,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
         await InventoryService.updateWagonNumber(
           inventoryId,
-          wagon.number,
-          wagon.formattedNumber,
-          wagon.notes ?? '',
-          wagon.isValid,
+          wagon,
           newOrderNumber: newOrder,
         );
       }
@@ -984,6 +1092,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                         style: const TextStyle(
                                             fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 8),
+                                    _buildTechnicalTotals(inventory),
                                     // Tlačítko pro otočení pořadí vozů
                                     if (inventory.wagonNumbers.isNotEmpty)
                                       SizedBox(
@@ -1040,11 +1149,13 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                                     if (editedNumber != null) {
                                                       await InventoryService
                                                           .updateWagonNumber(
-                                                              inventory.id,
-                                                              wagon.number,
+                                                        inventory.id,
+                                                        wagon.copyWith(
+                                                          formattedNumber:
                                                               editedNumber,
-                                                              wagon.notes ?? '',
-                                                              true);
+                                                          isValid: true,
+                                                        ),
+                                                      );
                                                       _loadInventories();
                                                     }
                                                   } else {

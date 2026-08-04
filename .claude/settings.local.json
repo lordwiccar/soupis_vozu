@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter pub:*)"
+      "Bash(flutter pub:*)",
+      "Bash(python -c \"import json; json.load\\(open\\('assets/wagon.json', encoding='utf-8'\\)\\); print\\('OK'\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('assets/wagon.json','utf8'\\)\\); console.log\\('OK'\\)\")",
+      "Bash(xargs wc -l)"
     ]
   }
 }

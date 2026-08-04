@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/inventory.dart';
+import 'wagon_registry_service.dart';
 
 class InventoryService {
   static Database? _database;
@@ -16,7 +17,7 @@ class InventoryService {
 
     _database = await openDatabase(
       path,
-      version: 2, // Zvýšit verzi pro migraci
+      version: 3, // Zvýšit verzi pro migraci
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -46,6 +47,13 @@ class InventoryService {
         order_number INTEGER NOT NULL,
         scanned_at TEXT NOT NULL,
         notes TEXT,
+        weight REAL,
+        brake_weight_g REAL,
+        brake_weight_p REAL,
+        handbrake INTEGER NOT NULL DEFAULT 0,
+        handbrake_kn REAL,
+        max_speed REAL,
+        length REAL,
         FOREIGN KEY (inventory_id) REFERENCES $_inventoryTable (id)
       )
     ''');
@@ -63,6 +71,23 @@ class InventoryService {
       // Aktualizace existujících záznamů
       await db.execute(
           'UPDATE $_inventoryTable SET last_modified = created_at WHERE last_modified = ""');
+    }
+    if (oldVersion < 3) {
+      // Technické údaje o voze (hmotnost, brzdící váhy, ruční brzda, rychlost, délka)
+      await db
+          .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN weight REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN brake_weight_g REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN brake_weight_p REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN handbrake INTEGER NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN handbrake_kn REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed REAL');
+      await db
+          .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN length REAL');
     }
   }
 
@@ -96,6 +121,8 @@ class InventoryService {
         wagonData, // [{number, formatted, isValid, order, notes}]
   ) async {
     await initDatabase();
+
+    final insertedWagons = <Map<String, dynamic>>[];
 
     try {
       // Začátek transakce
@@ -139,8 +166,17 @@ class InventoryService {
                   actualOrderNumber, // Použijeme skutečné pořadové číslo
               'scanned_at': DateTime.now().toIso8601String(),
               'notes': wagon['notes'] ?? '',
+              'weight': wagon['weight'],
+              'brake_weight_g': wagon['brakeWeightG'],
+              'brake_weight_p': wagon['brakeWeightP'],
+              'handbrake': (wagon['handbrake'] as bool? ?? false) ? 1 : 0,
+              'handbrake_kn': wagon['handbrakeForceKn'],
+              'max_speed': wagon['maxSpeed'],
+              'length': wagon['length'],
             },
           );
+
+          insertedWagons.add(wagon);
 
           // Přidáme do existujících čísel, aby se neopakovala duplicita v rámci této transakce
           existingNumbers.add(wagonNumber);
@@ -156,6 +192,24 @@ class InventoryService {
 
       // Aktualizace poslední změny soupisu
       await updateLastModified(inventoryId);
+
+      // Okamžitý zápis nově přidaných vozů do trvalého registru (napříč
+      // soupisy) – i bez jakýchkoli informací, aby byl vůz v databázi
+      // vidět hned po naskenování, ne až po prvním ručním uložení info.
+      for (final wagon in insertedWagons) {
+        await WagonRegistryService.upsertFromWagon(
+          number: wagon['number'] as String,
+          formattedNumber: wagon['formatted'] as String,
+          notes: (wagon['notes'] as String?) ?? '',
+          weight: wagon['weight'] as double?,
+          brakeWeightG: wagon['brakeWeightG'] as double?,
+          brakeWeightP: wagon['brakeWeightP'] as double?,
+          handbrake: wagon['handbrake'] as bool? ?? false,
+          handbrakeForceKn: wagon['handbrakeForceKn'] as double?,
+          maxSpeed: wagon['maxSpeed'] as double?,
+          length: wagon['length'] as double?,
+        );
+      }
 
       // Kontrola uložení
       final savedWagons = await _database!.query(
@@ -277,22 +331,27 @@ class InventoryService {
     }
   }
 
-  // Aktualizace existujícího čísla vozu
+  // Aktualizace existujícího čísla vozu – přijímá kompletní nový stav vozu,
+  // aby se při zápisu nikdy omylem nepřepsalo pole, které se nemělo měnit.
   static Future<void> updateWagonNumber(
     String inventoryId,
-    String wagonId,
-    String formattedNumber,
-    String notes,
-    bool isValid, {
+    WagonNumber wagon, {
     int? newOrderNumber,
   }) async {
     await initDatabase();
 
     try {
-      final updateData = {
-        'formatted_number': formattedNumber,
-        'notes': notes,
-        'is_valid': isValid ? 1 : 0,
+      final updateData = <String, dynamic>{
+        'formatted_number': wagon.formattedNumber,
+        'notes': wagon.notes,
+        'is_valid': wagon.isValid ? 1 : 0,
+        'weight': wagon.weight,
+        'brake_weight_g': wagon.brakeWeightG,
+        'brake_weight_p': wagon.brakeWeightP,
+        'handbrake': wagon.handbrake ? 1 : 0,
+        'handbrake_kn': wagon.handbrakeForceKn,
+        'max_speed': wagon.maxSpeed,
+        'length': wagon.length,
       };
 
       // Přidat nové pořadové číslo pokud je poskytnuto
@@ -304,14 +363,30 @@ class InventoryService {
         _wagonNumberTable,
         updateData,
         where: 'inventory_id = ? AND number = ?',
-        whereArgs: [inventoryId, wagonId],
+        whereArgs: [inventoryId, wagon.number],
       );
 
       debugPrint(
-          'Číslo vozu aktualizováno: $formattedNumber (affected rows: $result)');
+          'Číslo vozu aktualizováno: ${wagon.formattedNumber} (affected rows: $result)');
 
       // Aktualizace poslední změny soupisu
       await updateLastModified(inventoryId);
+
+      // Zápis do trvalého registru vozů (napříč soupisy) – vůz v registru
+      // zůstává i po smazání všech informací, jen se aktualizuje na
+      // "prázdný" stav.
+      await WagonRegistryService.upsertFromWagon(
+        number: wagon.number,
+        formattedNumber: wagon.formattedNumber,
+        notes: wagon.notes ?? '',
+        weight: wagon.weight,
+        brakeWeightG: wagon.brakeWeightG,
+        brakeWeightP: wagon.brakeWeightP,
+        handbrake: wagon.handbrake,
+        handbrakeForceKn: wagon.handbrakeForceKn,
+        maxSpeed: wagon.maxSpeed,
+        length: wagon.length,
+      );
     } catch (e) {
       debugPrint('Chyba při aktualizaci čísla vozu: $e');
       rethrow;

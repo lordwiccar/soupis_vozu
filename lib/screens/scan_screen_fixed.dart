@@ -10,6 +10,7 @@ import 'package:soupis_vozu/services/inventory_service.dart';
 import 'package:soupis_vozu/services/uic_validator.dart';
 import 'package:soupis_vozu/services/scan_settings_service.dart';
 import 'package:soupis_vozu/services/ai_ocr_service.dart';
+import 'package:soupis_vozu/services/wagon_registry_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -671,24 +672,58 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     );
   }
 
+  /// Sestaví data pro zápis vozu do soupisu a rovnou zkontroluje trvalý
+  /// registr vozů – pokud už je vůz v registru znám, jeho poznámky a
+  /// příznaky se automaticky předvyplní.
+  Future<Map<String, dynamic>> _buildWagonData(
+    String number,
+    String formatted,
+    bool isValid,
+    int order,
+  ) async {
+    final registryEntry = await WagonRegistryService.getEntry(number);
+    return {
+      'number': number,
+      'formatted': formatted,
+      'isValid': isValid,
+      'order': order,
+      'notes': registryEntry?.notes,
+      'weight': registryEntry?.weight,
+      'brakeWeightG': registryEntry?.brakeWeightG,
+      'brakeWeightP': registryEntry?.brakeWeightP,
+      'handbrake': registryEntry?.handbrake ?? false,
+      'handbrakeForceKn': registryEntry?.handbrakeForceKn,
+      'maxSpeed': registryEntry?.maxSpeed,
+      'length': registryEntry?.length,
+    };
+  }
+
+  /// Má vůz z [_buildWagonData] nějaké skutečné info (ne jen "prázdný"
+  /// záznam v registru)? Používá se jen pro rozhodnutí, zda uživateli
+  /// zobrazit hlášku o automatickém předvyplnění.
+  bool _wagonDataHasInfo(Map<String, dynamic> data) {
+    final notes = data['notes'] as String?;
+    return (notes?.trim().isNotEmpty ?? false) ||
+        data['weight'] != null ||
+        data['brakeWeightG'] != null ||
+        data['brakeWeightP'] != null ||
+        (data['handbrake'] as bool? ?? false) ||
+        data['maxSpeed'] != null ||
+        data['length'] != null;
+  }
+
   Future<void> _addSelectedWagon(String selectedNumber) async {
     if (_currentInventoryId == null) {
       _showMessage('Nejprve pojmenujte soupis');
       return;
     }
 
-    final wagonData = [
-      {
-        'number': selectedNumber,
-        'formatted': UicValidator.formatUicNumber(selectedNumber),
-        'isValid': true,
-        'order': _nextOrderNumber,
-        'notes': null,
-      }
-    ];
+    final formatted = UicValidator.formatUicNumber(selectedNumber);
+    final wagonData = await _buildWagonData(
+        selectedNumber, formatted, true, _nextOrderNumber);
 
     await InventoryService.addWagonNumbersBatch(
-        _currentInventoryId!, wagonData);
+        _currentInventoryId!, [wagonData]);
 
     if (mounted && !_isDisposing) {
       setState(() {
@@ -696,8 +731,10 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         _totalWagonCount++; // Aktualizujeme celkový počet
         _nextOrderNumber++;
       });
-      _showMessage(
-          'Přidáno číslo vozu: ${UicValidator.formatUicNumber(selectedNumber)}');
+      final foundInRegistry = _wagonDataHasInfo(wagonData);
+      _showMessage(foundInRegistry
+          ? 'Přidáno číslo vozu: $formatted • nalezeno v databázi, informace načteny'
+          : 'Přidáno číslo vozu: $formatted');
     }
   }
 
@@ -1130,21 +1167,14 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
               if (newNumber.isNotEmpty) {
                 final isValid = UicValidator.validateUicNumber(newNumber);
                 final newFormatted = UicValidator.formatUicNumber(newNumber);
+                final nav = Navigator.of(context);
 
                 // Přidáme opravené číslo jako nový záznam místo aktualizace
-                final wagonData = [
-                  {
-                    'number': newNumber,
-                    'formatted': newFormatted,
-                    'isValid': isValid,
-                    'order': order,
-                    'notes': null,
-                  }
-                ];
+                final wagonData = await _buildWagonData(
+                    newNumber, newFormatted, isValid, order);
 
-                final nav = Navigator.of(context);
                 await InventoryService.addWagonNumbersBatch(
-                    _currentInventoryId!, wagonData);
+                    _currentInventoryId!, [wagonData]);
 
                 if (mounted) {
                   nav.pop();

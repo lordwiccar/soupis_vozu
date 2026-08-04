@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory.dart';
+import '../services/decimal_input.dart';
 import '../services/inventory_service.dart';
 import '../services/theme_service.dart';
 import '../services/uic_validator.dart';
@@ -29,37 +30,43 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   final List<String> _statuses = WagonNumber.allFlags;
   final Map<String, String> _statusDescriptions = WagonNumber.flagDescriptions;
 
+  // Technické údaje o voze
+  final _weightController = TextEditingController();
+  final _brakeWeightGController = TextEditingController();
+  final _brakeWeightPController = TextEditingController();
+  bool _handbrake = false;
+  final _handbrakeForceController = TextEditingController();
+  final _maxSpeedController = TextEditingController();
+  final _lengthController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
-    _notesController.text = widget.wagon.notes ?? '';
-
     // Parsování příznaků z existujících poznámek
-    if (widget.wagon.notes?.isNotEmpty == true) {
-      final notes = widget.wagon.notes!;
+    final parsed = WagonNumber.parseNotes(widget.wagon.notes);
+    _selectedStatus = parsed.flags.join(' + ');
+    _notesController.text = parsed.text;
 
-      final parts = notes.split(' - ');
-      final flagsPart = parts[0];
-      final notesPart = parts.length > 1 ? parts.sublist(1).join(' - ') : '';
+    _weightController.text = formatDecimal(widget.wagon.weight);
+    _brakeWeightGController.text = formatDecimal(widget.wagon.brakeWeightG);
+    _brakeWeightPController.text = formatDecimal(widget.wagon.brakeWeightP);
+    _handbrake = widget.wagon.handbrake;
+    _handbrakeForceController.text =
+        formatDecimal(widget.wagon.handbrakeForceKn);
+    _maxSpeedController.text = formatDecimal(widget.wagon.maxSpeed);
+    _lengthController.text = formatDecimal(widget.wagon.length);
+  }
 
-      final validFlags = <String>[];
-      for (final flag in _statuses) {
-        if (flagsPart.contains(flag)) {
-          validFlags.add(flag);
-        }
-      }
-
-      if (validFlags.isNotEmpty) {
-        _selectedStatus = validFlags.join(' + ');
-        _notesController.text = notesPart;
-      } else {
-        _selectedStatus = '';
-        _notesController.text = notes;
-      }
-    } else {
-      _selectedStatus = '';
-      _notesController.text = '';
-    }
+  @override
+  void dispose() {
+    _notesController.dispose();
+    _weightController.dispose();
+    _brakeWeightGController.dispose();
+    _brakeWeightPController.dispose();
+    _handbrakeForceController.dispose();
+    _maxSpeedController.dispose();
+    _lengthController.dispose();
+    super.dispose();
   }
 
   Future<void> _editWagonNumber() async {
@@ -108,10 +115,10 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
       try {
         await InventoryService.updateWagonNumber(
           widget.inventoryId,
-          widget.wagon.number,
-          result,
-          widget.wagon.notes ?? '',
-          UicValidator.validateUicNumber(result),
+          widget.wagon.copyWith(
+            formattedNumber: result,
+            isValid: UicValidator.validateUicNumber(result),
+          ),
         );
 
         if (mounted) {
@@ -140,24 +147,35 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   }
 
   Future<void> _updateWagon() async {
-    late String newNotes;
-    if (_selectedStatus.isNotEmpty) {
-      if (_notesController.text.isNotEmpty) {
-        newNotes = '$_selectedStatus - ${_notesController.text}';
-      } else {
-        newNotes = _selectedStatus;
-      }
-    } else {
-      newNotes = _notesController.text;
-    }
+    final newNotes = WagonNumber.composeNotes(
+      _selectedStatus.isEmpty ? [] : _selectedStatus.split(' + '),
+      _notesController.text,
+    );
+
+    // Pozor: záměrně nepoužíváme copyWith – ten by (kvůli ?? sémantice)
+    // nedokázal vynulovat pole, které uživatel v poli smazal. Zde vždy
+    // zapisujeme přesně to, co formulář právě obsahuje.
+    final updatedWagon = WagonNumber(
+      number: widget.wagon.number,
+      formattedNumber: widget.wagon.formattedNumber,
+      isValid: widget.wagon.isValid,
+      order: widget.wagon.order,
+      scannedAt: widget.wagon.scannedAt,
+      notes: newNotes,
+      weight: parseDecimal(_weightController.text),
+      brakeWeightG: parseDecimal(_brakeWeightGController.text),
+      brakeWeightP: parseDecimal(_brakeWeightPController.text),
+      handbrake: _handbrake,
+      handbrakeForceKn:
+          _handbrake ? parseDecimal(_handbrakeForceController.text) : null,
+      maxSpeed: parseDecimal(_maxSpeedController.text),
+      length: parseDecimal(_lengthController.text),
+    );
 
     try {
       await InventoryService.updateWagonNumber(
         widget.inventoryId,
-        widget.wagon.number,
-        widget.wagon.formattedNumber,
-        newNotes,
-        widget.wagon.isValid,
+        updatedWagon,
       );
 
       if (mounted) {
@@ -233,6 +251,24 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
         );
       }
     }
+  }
+
+  Widget _buildDecimalField({
+    required TextEditingController controller,
+    required String label,
+    required String suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [DecimalInputFormatter()],
+      decoration: InputDecoration(
+        labelText: label,
+        suffixText: suffix,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+    );
   }
 
   @override
@@ -465,6 +501,89 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                           'Doplňující informace o stavu vozu, poškození atd.',
                           style: TextStyle(fontSize: 14, color: Colors.grey),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Technické údaje o voze
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Technické údaje:',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _weightController,
+                                label: 'Hmotnost vozu',
+                                suffix: 't',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _lengthController,
+                                label: 'Délka',
+                                suffix: 'm',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _brakeWeightGController,
+                                label: 'Brzdící váha G',
+                                suffix: 't',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _brakeWeightPController,
+                                label: 'Brzdící váha P',
+                                suffix: 't',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildDecimalField(
+                          controller: _maxSpeedController,
+                          label: 'Rychlost',
+                          suffix: 'km/h',
+                        ),
+                        const SizedBox(height: 12),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Ruční brzda'),
+                          value: _handbrake,
+                          activeTrackColor: ThemeService.kRailAmber,
+                          onChanged: (value) {
+                            setState(() => _handbrake = value);
+                          },
+                        ),
+                        if (_handbrake) ...[
+                          const SizedBox(height: 4),
+                          _buildDecimalField(
+                            controller: _handbrakeForceController,
+                            label: 'Hodnota ruční brzdy',
+                            suffix: 'kN',
+                          ),
+                        ],
                       ],
                     ),
                   ),

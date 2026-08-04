@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
 import '../services/scan_settings_service.dart';
+import '../services/wagon_registry_service.dart';
 import 'contacts_screen.dart';
+import 'wagon_database_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -28,12 +30,16 @@ class _SettingsScreenState extends State<SettingsScreen>
   AiProvider? _aiProvider;
   bool _hasApiKey = false;
 
+  // Databáze vozů
+  int _wagonRegistryCount = 0;
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadThemePreference();
     _loadScanSettings();
+    _loadWagonRegistryCount();
   }
 
   @override
@@ -60,6 +66,11 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _loadWagonRegistryCount() async {
+    final count = await WagonRegistryService.count();
+    if (mounted) setState(() => _wagonRegistryCount = count);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           tabs: const [
             Tab(icon: Icon(Icons.contacts_outlined), text: 'Adresář'),
             Tab(icon: Icon(Icons.document_scanner_outlined), text: 'Skenování'),
+            Tab(icon: Icon(Icons.storage_outlined), text: 'Databáze'),
             Tab(icon: Icon(Icons.palette_outlined), text: 'Motiv'),
             Tab(icon: Icon(Icons.info_outline), text: 'O aplikaci'),
           ],
@@ -84,6 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               children: [
                 _buildContactsTab(),
                 _buildScanTab(),
+                _buildDatabaseTab(),
                 _buildThemeTab(),
                 _buildAboutTab(),
               ],
@@ -119,6 +132,76 @@ class _SettingsScreenState extends State<SettingsScreen>
           onTap: _showCopyRecipientHelp,
         ),
       ],
+    );
+  }
+
+  // ─── DATABÁZE VOZŮ ──────────────────────────────────────────────────────────
+
+  Widget _buildDatabaseTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _buildSettingsTile(
+          icon: Icons.storage_outlined,
+          title: 'Databáze vozů',
+          subtitle: _wagonRegistryCount == 0
+              ? 'Zatím žádné uložené vozy'
+              : 'Uloženo vozů: $_wagonRegistryCount',
+          trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WagonDatabaseScreen()),
+            );
+            _loadWagonRegistryCount();
+          },
+        ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.help_outline,
+          title: 'Jak databáze funguje',
+          subtitle: 'Automatické ukládání a předvyplňování informací o vozech',
+          onTap: _showWagonDatabaseHelp,
+        ),
+      ],
+    );
+  }
+
+  void _showWagonDatabaseHelp() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Databáze vozů'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'Aplikace si u každého naskenovaného vozu pamatuje '
+                  'poznámky a příznaky napříč všemi soupisy.'),
+              const SizedBox(height: 12),
+              const Text(
+                  '• Když je vůz nalezen v databázi, jeho informace se '
+                  'při skenování automaticky předvyplní.'),
+              const SizedBox(height: 8),
+              const Text(
+                  '• Když v detailu vozu poznámky/příznaky smažete a '
+                  'uložíte, smaže se i záznam v databázi.'),
+              const SizedBox(height: 8),
+              const Text(
+                  '• Databázi lze v sekci "Databáze vozů" prohledávat, '
+                  'ručně upravovat i exportovat/importovat jako .xlsx.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Rozumím'),
+          ),
+        ],
+      ),
     );
   }
 

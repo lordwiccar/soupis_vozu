@@ -137,27 +137,37 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                         children: [
                           Text(
                             'VÍTEJTE V APLIKACI\nPRO SOUPIS VOZŮ',
-                            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              height: 1.2,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineMedium
+                                ?.copyWith(
+                                  height: 1.2,
+                                ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 10),
                           Text(
                             'Skenujte čísla vozů a vytvářejte soupisy',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: isDark
-                                  ? ThemeService.kRailCream.withValues(alpha:0.55)
-                                  : ThemeService.kRailBlack.withValues(alpha:0.5),
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: isDark
+                                      ? ThemeService.kRailCream
+                                          .withValues(alpha: 0.55)
+                                      : ThemeService.kRailBlack
+                                          .withValues(alpha: 0.5),
+                                ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 28),
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: () => Navigator.pushNamed(context, '/scan'),
-                              icon: const Icon(Icons.document_scanner_outlined, size: 20),
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/scan'),
+                              icon: const Icon(Icons.document_scanner_outlined,
+                                  size: 20),
                               label: const Text('ZAHÁJIT SKENOVÁNÍ'),
                             ),
                           ),
@@ -178,7 +188,7 @@ class _HomeScreenFullState extends State<HomeScreenFull>
               color: isDark ? ThemeService.kRailCharcoal : Colors.white,
               border: Border(
                 top: BorderSide(
-                  color: ThemeService.kRailAmber.withValues(alpha:0.6),
+                  color: ThemeService.kRailAmber.withValues(alpha: 0.6),
                   width: 2,
                 ),
               ),
@@ -197,8 +207,8 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                     Text(
                       'POSLEDNÍ SOUPISY',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        letterSpacing: 1.0,
-                      ),
+                            letterSpacing: 1.0,
+                          ),
                     ),
                   ],
                 ),
@@ -221,7 +231,8 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                                 horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
                               color: isDark
-                                  ? ThemeService.kRailSteel.withValues(alpha:0.35)
+                                  ? ThemeService.kRailSteel
+                                      .withValues(alpha: 0.35)
                                   : ThemeService.kRailCream,
                               borderRadius: BorderRadius.circular(4),
                               border: Border(
@@ -236,9 +247,7 @@ class _HomeScreenFullState extends State<HomeScreenFull>
                               children: [
                                 Text(
                                   inventory.name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall,
+                                  style: Theme.of(context).textTheme.titleSmall,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
