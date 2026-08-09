@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory.dart';
 import '../services/decimal_input.dart';
@@ -36,8 +37,11 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   final _brakeWeightPController = TextEditingController();
   bool _handbrake = false;
   final _handbrakeForceController = TextEditingController();
-  final _maxSpeedController = TextEditingController();
+  final _maxSpeedEmptyController = TextEditingController();
+  final _maxSpeedLoadedController = TextEditingController();
   final _lengthController = TextEditingController();
+  final _axleCountController = TextEditingController();
+  bool _nonMetallicBlocks = false;
 
   @override
   void initState() {
@@ -53,8 +57,12 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     _handbrake = widget.wagon.handbrake;
     _handbrakeForceController.text =
         formatDecimal(widget.wagon.handbrakeForceKn);
-    _maxSpeedController.text = formatDecimal(widget.wagon.maxSpeed);
+    _maxSpeedEmptyController.text = formatDecimal(widget.wagon.maxSpeedEmpty);
+    _maxSpeedLoadedController.text =
+        formatDecimal(widget.wagon.maxSpeedLoaded);
     _lengthController.text = formatDecimal(widget.wagon.length);
+    _axleCountController.text = widget.wagon.axleCount?.toString() ?? '';
+    _nonMetallicBlocks = widget.wagon.nonMetallicBlocks;
   }
 
   @override
@@ -64,8 +72,10 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     _brakeWeightGController.dispose();
     _brakeWeightPController.dispose();
     _handbrakeForceController.dispose();
-    _maxSpeedController.dispose();
+    _maxSpeedEmptyController.dispose();
+    _maxSpeedLoadedController.dispose();
     _lengthController.dispose();
+    _axleCountController.dispose();
     super.dispose();
   }
 
@@ -168,8 +178,11 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
       handbrake: _handbrake,
       handbrakeForceKn:
           _handbrake ? parseDecimal(_handbrakeForceController.text) : null,
-      maxSpeed: parseDecimal(_maxSpeedController.text),
+      maxSpeedEmpty: parseDecimal(_maxSpeedEmptyController.text),
+      maxSpeedLoaded: parseDecimal(_maxSpeedLoadedController.text),
       length: parseDecimal(_lengthController.text),
+      axleCount: int.tryParse(_axleCountController.text.trim()),
+      nonMetallicBlocks: _nonMetallicBlocks,
     );
 
     try {
@@ -265,6 +278,22 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
       decoration: InputDecoration(
         labelText: label,
         suffixText: suffix,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+    );
+  }
+
+  Widget _buildIntField({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: InputDecoration(
+        labelText: label,
         border: const OutlineInputBorder(),
         isDense: true,
       ),
@@ -546,7 +575,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                             Expanded(
                               child: _buildDecimalField(
                                 controller: _brakeWeightGController,
-                                label: 'Brzdící váha G',
+                                label: 'Brzdící váha (P)',
                                 suffix: 't',
                               ),
                             ),
@@ -554,17 +583,36 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                             Expanded(
                               child: _buildDecimalField(
                                 controller: _brakeWeightPController,
-                                label: 'Brzdící váha P',
+                                label: 'Brzdící váha (L)',
                                 suffix: 't',
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
-                        _buildDecimalField(
-                          controller: _maxSpeedController,
-                          label: 'Rychlost',
-                          suffix: 'km/h',
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _maxSpeedEmptyController,
+                                label: 'Rychlost prázdný',
+                                suffix: 'km/h',
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildDecimalField(
+                                controller: _maxSpeedLoadedController,
+                                label: 'Rychlost ložený',
+                                suffix: 'km/h',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildIntField(
+                          controller: _axleCountController,
+                          label: 'Počet náprav',
                         ),
                         const SizedBox(height: 12),
                         SwitchListTile(
@@ -584,6 +632,15 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                             suffix: 'kN',
                           ),
                         ],
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Nekovové špalíky'),
+                          value: _nonMetallicBlocks,
+                          activeTrackColor: ThemeService.kRailAmber,
+                          onChanged: (value) {
+                            setState(() => _nonMetallicBlocks = value);
+                          },
+                        ),
                       ],
                     ),
                   ),

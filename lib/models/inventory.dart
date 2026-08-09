@@ -64,12 +64,15 @@ class WagonNumber {
 
   // Technické údaje o voze – volitelné, doplňují notes/příznaky.
   final double? weight; // Hmotnost vozu (t)
-  final double? brakeWeightG; // Brzdící váha G (t)
-  final double? brakeWeightP; // Brzdící váha P (t)
+  final double? brakeWeightG; // Brzdící váha (P) (t)
+  final double? brakeWeightP; // Brzdící váha (L) (t)
   final bool handbrake; // Ruční brzda (ano/ne)
   final double? handbrakeForceKn; // Hodnota ruční brzdy (kN), jen když handbrake == true
-  final double? maxSpeed; // Rychlost (km/h)
+  final double? maxSpeedEmpty; // Rychlost prázdný (km/h)
+  final double? maxSpeedLoaded; // Rychlost ložený (km/h)
   final double? length; // Délka (m)
+  final int? axleCount; // Počet náprav
+  final bool nonMetallicBlocks; // Nekovové špalíky (ano/ne)
 
   const WagonNumber({
     required this.number,
@@ -83,8 +86,11 @@ class WagonNumber {
     this.brakeWeightP,
     this.handbrake = false,
     this.handbrakeForceKn,
-    this.maxSpeed,
+    this.maxSpeedEmpty,
+    this.maxSpeedLoaded,
     this.length,
+    this.axleCount,
+    this.nonMetallicBlocks = false,
   });
 
   /// Má vůz uložené nějaké informace (poznámky/příznaky nebo technické
@@ -96,8 +102,25 @@ class WagonNumber {
       brakeWeightG != null ||
       brakeWeightP != null ||
       handbrake ||
-      maxSpeed != null ||
-      length != null;
+      maxSpeedEmpty != null ||
+      maxSpeedLoaded != null ||
+      length != null ||
+      axleCount != null ||
+      nonMetallicBlocks;
+
+  /// Má vůz v databázi vyplněné všechny sledované technické údaje?
+  /// Výjimkou je "Ruční brzda" – řada vozů ji fyzicky nemá, takže se
+  /// nevyžaduje, aby byla zapnutá; pokud zapnutá je, vyžaduje se u ní
+  /// i hodnota brzdné síly.
+  bool get hasCompleteInfo =>
+      weight != null &&
+      brakeWeightG != null &&
+      brakeWeightP != null &&
+      maxSpeedEmpty != null &&
+      maxSpeedLoaded != null &&
+      length != null &&
+      axleCount != null &&
+      (!handbrake || handbrakeForceKn != null);
 
   WagonNumber copyWith({
     String? number,
@@ -111,8 +134,11 @@ class WagonNumber {
     double? brakeWeightP,
     bool? handbrake,
     double? handbrakeForceKn,
-    double? maxSpeed,
+    double? maxSpeedEmpty,
+    double? maxSpeedLoaded,
     double? length,
+    int? axleCount,
+    bool? nonMetallicBlocks,
   }) {
     return WagonNumber(
       number: number ?? this.number,
@@ -126,8 +152,11 @@ class WagonNumber {
       brakeWeightP: brakeWeightP ?? this.brakeWeightP,
       handbrake: handbrake ?? this.handbrake,
       handbrakeForceKn: handbrakeForceKn ?? this.handbrakeForceKn,
-      maxSpeed: maxSpeed ?? this.maxSpeed,
+      maxSpeedEmpty: maxSpeedEmpty ?? this.maxSpeedEmpty,
+      maxSpeedLoaded: maxSpeedLoaded ?? this.maxSpeedLoaded,
       length: length ?? this.length,
+      axleCount: axleCount ?? this.axleCount,
+      nonMetallicBlocks: nonMetallicBlocks ?? this.nonMetallicBlocks,
     );
   }
 
@@ -144,8 +173,11 @@ class WagonNumber {
       'brakeWeightP': brakeWeightP,
       'handbrake': handbrake,
       'handbrakeForceKn': handbrakeForceKn,
-      'maxSpeed': maxSpeed,
+      'maxSpeedEmpty': maxSpeedEmpty,
+      'maxSpeedLoaded': maxSpeedLoaded,
       'length': length,
+      'axleCount': axleCount,
+      'nonMetallicBlocks': nonMetallicBlocks,
     };
   }
 
@@ -162,8 +194,11 @@ class WagonNumber {
       brakeWeightP: (map['brake_weight_p'] as num?)?.toDouble(),
       handbrake: (map['handbrake'] as int?) == 1,
       handbrakeForceKn: (map['handbrake_kn'] as num?)?.toDouble(),
-      maxSpeed: (map['max_speed'] as num?)?.toDouble(),
+      maxSpeedEmpty: (map['max_speed_empty'] as num?)?.toDouble(),
+      maxSpeedLoaded: (map['max_speed_loaded'] as num?)?.toDouble(),
       length: (map['length'] as num?)?.toDouble(),
+      axleCount: map['axle_count'] as int?,
+      nonMetallicBlocks: (map['non_metallic_blocks'] as int?) == 1,
     );
   }
 

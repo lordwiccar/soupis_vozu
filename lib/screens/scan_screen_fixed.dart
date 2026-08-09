@@ -6,6 +6,7 @@ import '../services/theme_service.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:soupis_vozu/models/inventory.dart';
+import 'package:soupis_vozu/models/wagon_registry_entry.dart';
 import 'package:soupis_vozu/services/inventory_service.dart';
 import 'package:soupis_vozu/services/uic_validator.dart';
 import 'package:soupis_vozu/services/scan_settings_service.dart';
@@ -60,6 +61,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   int _failedScanCount = 0; // Počet neúspěšných snímků za sebou
   final List<String> _detectedNumbers = [];
   int _totalWagonCount = 0; // Celkový počet vozů v soupisu
+  // Zda má daný vůz (klíč = číslo bez formátování) v databázi vyplněné
+  // všechny sledované technické údaje – řídí malou ikonku u čísla v seznamu.
+  final Map<String, bool> _wagonComplete = {};
   late final TextRecognizer _textRecognizer;
   final bool _isMobilePlatform = !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -177,6 +181,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         setState(() {
           _totalWagonCount = wagons.length;
           _nextOrderNumber = wagons.length + 1;
+          for (final wagon in wagons) {
+            _wagonComplete[wagon.number] = wagon.hasCompleteInfo;
+          }
         });
       }
     } catch (e) {
@@ -394,13 +401,92 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       _showOverlay('Nenalezena žádná čísla vozů', ThemeService.kRailAmber);
 
       if (_failedScanCount >= 2) {
-        final manualNumber = await _showManualInputDialog();
-        if (manualNumber != null) {
-          await _addSelectedWagon(manualNumber);
-        }
         _failedScanCount = 0;
+        await _attemptShortNumberScan();
       }
     }
+  }
+
+  /// Třetí pokus o naskenování – po dvou neúspěšných pokusech o přečtení
+  /// celého 12místného čísla zkusí ML Kit rozpoznat už jen konec čísla
+  /// (poslední trojčíslí a kontrolní číslici, formát "XXX-X") a najde
+  /// odpovídající vůz v databázi. Podle počtu shod:
+  ///  - 1 shoda   → dotaz na potvrzení konkrétního čísla,
+  ///  - 2+ shody  → výběr ze seznamu nalezených čísel (s možností žádné),
+  ///  - 0 shod, nebo se konec čísla nepodaří přečíst → rovnou ruční zadání.
+  Future<void> _attemptShortNumberScan() async {
+    if (_cameraController == null || _isDisposing || !_isMobilePlatform) {
+      await _fallbackToManualInput();
+      return;
+    }
+
+    _showOverlay(
+        'Zkouším rozpoznat poslední čtyři znaky čísla…', ThemeService.kRailAmber);
+
+    try {
+      final image = await _cameraController!.takePicture();
+      if (_isDisposing) return;
+
+      final inputImage = InputImage.fromFilePath(image.path);
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      final candidates = _extractShortWagonNumbers(recognizedText.text);
+
+      if (candidates.isEmpty) {
+        await _fallbackToManualInput();
+        return;
+      }
+
+      final matches = await WagonRegistryService.findBySuffix(candidates.first);
+
+      if (matches.isEmpty) {
+        await _fallbackToManualInput();
+        return;
+      }
+
+      String? selectedNumber;
+      if (matches.length == 1) {
+        final confirmed =
+            await _showShortMatchConfirmDialog(matches.first.formattedNumber);
+        selectedNumber = confirmed == true ? matches.first.number : null;
+      } else {
+        selectedNumber = await _showShortMatchSelectionDialog(matches);
+      }
+
+      if (selectedNumber != null) {
+        await _addSelectedWagon(selectedNumber);
+      } else {
+        await _fallbackToManualInput();
+      }
+    } catch (e) {
+      debugPrint('Chyba při krátkém pokusu o skenování: $e');
+      await _fallbackToManualInput();
+    }
+  }
+
+  Future<void> _fallbackToManualInput() async {
+    final manualNumber = await _showManualInputDialog();
+    if (manualNumber != null) {
+      await _addSelectedWagon(manualNumber);
+    }
+  }
+
+  /// Rozpozná jen konec UIC čísla – poslední trojčíslí a kontrolní číslici,
+  /// formát "XXX-X". Používá se ve třetím pokusu o skenování, kdy je
+  /// fotografie zaměřená jen na konec čísla vozu.
+  List<String> _extractShortWagonNumbers(String text) {
+    debugPrint('Extrahuji konec čísla z textu: "$text"');
+
+    const kc = r'[\-–— ]';
+    final pattern = RegExp(r'(?<![0-9])([0-9]{3})' + kc + r'([0-9])(?![0-9])');
+
+    final results = <String>[];
+    for (final match in pattern.allMatches(text)) {
+      final candidate = match.group(1)! + match.group(2)!;
+      if (!results.contains(candidate)) results.add(candidate);
+    }
+
+    debugPrint('Nalezené konce čísel: $results');
+    return results;
   }
 
   List<String> _extractWagonNumbers(String text) {
@@ -631,6 +717,94 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     );
   }
 
+  /// Potvrzovací dotaz po třetím, "krátkém" pokusu o skenování – v databázi
+  /// byl podle konce čísla nalezen jediný odpovídající vůz.
+  Future<bool?> _showShortMatchConfirmDialog(String formattedNumber) async {
+    if (!mounted || _isDisposing) return null;
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nalezeno v databázi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Podle konce čísla byl v databázi vozů nalezen tento vůz:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              formattedNumber,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Je to opravdu tento vůz?',
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Zadat ručně'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Ano, správně'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Výběr po třetím, "krátkém" pokusu o skenování – konci čísla odpovídá
+  /// v databázi více vozů, nechá uživatele vybrat ten správný (nebo žádný).
+  Future<String?> _showShortMatchSelectionDialog(
+      List<WagonRegistryEntry> matches) async {
+    if (!mounted || _isDisposing) return null;
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nalezeno více shod'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Podle konce čísla bylo v databázi nalezeno více vozů. Vyberte, který je správně:',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            ...matches.map((entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(entry.number),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                    child: Text(
+                      entry.formattedNumber,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Žádné z nich – zadat ručně'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<String?> _showWagonSelectionDialog(List<String> validNumbers) async {
     if (!mounted || _isDisposing) return null;
 
@@ -693,8 +867,11 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       'brakeWeightP': registryEntry?.brakeWeightP,
       'handbrake': registryEntry?.handbrake ?? false,
       'handbrakeForceKn': registryEntry?.handbrakeForceKn,
-      'maxSpeed': registryEntry?.maxSpeed,
+      'maxSpeedEmpty': registryEntry?.maxSpeedEmpty,
+      'maxSpeedLoaded': registryEntry?.maxSpeedLoaded,
       'length': registryEntry?.length,
+      'axleCount': registryEntry?.axleCount,
+      'nonMetallicBlocks': registryEntry?.nonMetallicBlocks ?? false,
     };
   }
 
@@ -708,8 +885,26 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         data['brakeWeightG'] != null ||
         data['brakeWeightP'] != null ||
         (data['handbrake'] as bool? ?? false) ||
-        data['maxSpeed'] != null ||
-        data['length'] != null;
+        data['maxSpeedEmpty'] != null ||
+        data['maxSpeedLoaded'] != null ||
+        data['length'] != null ||
+        data['axleCount'] != null ||
+        (data['nonMetallicBlocks'] as bool? ?? false);
+  }
+
+  /// Má vůz z [_buildWagonData] vyplněné úplně všechny sledované technické
+  /// údaje? Stejná pravidla jako [WagonNumber.hasCompleteInfo] (výjimka:
+  /// ruční brzda nemusí být přítomná).
+  bool _isWagonDataComplete(Map<String, dynamic> data) {
+    final handbrake = data['handbrake'] as bool? ?? false;
+    return data['weight'] != null &&
+        data['brakeWeightG'] != null &&
+        data['brakeWeightP'] != null &&
+        data['maxSpeedEmpty'] != null &&
+        data['maxSpeedLoaded'] != null &&
+        data['length'] != null &&
+        data['axleCount'] != null &&
+        (!handbrake || data['handbrakeForceKn'] != null);
   }
 
   Future<void> _addSelectedWagon(String selectedNumber) async {
@@ -730,6 +925,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         _detectedNumbers.add(selectedNumber);
         _totalWagonCount++; // Aktualizujeme celkový počet
         _nextOrderNumber++;
+        _wagonComplete[selectedNumber] = _isWagonDataComplete(wagonData);
       });
       final foundInRegistry = _wagonDataHasInfo(wagonData);
       _showMessage(foundInRegistry
@@ -790,10 +986,42 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           ),
         ),
       );
+
+      // Po návratu z detailu obnovíme příznak "kompletní údaje" pro tento
+      // vůz – v detailu se mohla technická data změnit (nebo vůz smazat).
+      await _refreshWagonCompleteness(wagonData.number);
     } catch (e) {
       if (mounted) {
         _showError('Chyba při otevírání detailů vozu: $e');
       }
+    }
+  }
+
+  /// Znovu načte, zda má daný vůz v aktuálním soupisu vyplněné všechny
+  /// sledované technické údaje, a promítne to do [_wagonComplete].
+  Future<void> _refreshWagonCompleteness(String number) async {
+    if (_currentInventoryId == null || !mounted) return;
+    try {
+      final wagons = await InventoryService.getWagonNumbersForInventory(
+          _currentInventoryId!);
+      WagonNumber? wagon;
+      for (final w in wagons) {
+        if (w.number == number) {
+          wagon = w;
+          break;
+        }
+      }
+      if (mounted) {
+        setState(() {
+          if (wagon != null) {
+            _wagonComplete[number] = wagon.hasCompleteInfo;
+          } else {
+            _wagonComplete.remove(number);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Chyba při obnovování stavu vozu: $e');
     }
   }
 
@@ -943,6 +1171,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                   final isValid =
                                       UicValidator.validateUicNumber(
                                           number);
+                                  final isComplete =
+                                      _wagonComplete[number] ?? false;
                                   return Padding(
                                     padding:
                                         const EdgeInsets.only(bottom: 6),
@@ -970,6 +1200,22 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                             ),
                                           ),
                                         ),
+                                        Tooltip(
+                                          message: isComplete
+                                              ? 'Databáze: technické údaje kompletní'
+                                              : 'Databáze: technické údaje neúplné',
+                                          child: Icon(
+                                            isComplete
+                                                ? Icons.circle
+                                                : Icons.circle_outlined,
+                                            size: 8,
+                                            color: isComplete
+                                                ? Colors.greenAccent
+                                                    .withValues(alpha: 0.8)
+                                                : Colors.white24,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
                                         IconButton(
                                           icon: const Icon(
                                             Icons.edit_outlined,
@@ -1185,6 +1431,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                     _detectedNumbers.add(newNumber);
                     _totalWagonCount++; // Aktualizujeme celkový počet
                     _nextOrderNumber++;
+                    _wagonComplete[newNumber] = _isWagonDataComplete(wagonData);
                   });
                 }
               }

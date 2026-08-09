@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -75,20 +76,25 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
     final parts = <String>[];
     if (entry.weight != null) parts.add('${formatDecimal(entry.weight)} t');
     if (entry.brakeWeightG != null) {
-      parts.add('G ${formatDecimal(entry.brakeWeightG)} t');
+      parts.add('P ${formatDecimal(entry.brakeWeightG)} t');
     }
     if (entry.brakeWeightP != null) {
-      parts.add('P ${formatDecimal(entry.brakeWeightP)} t');
+      parts.add('L ${formatDecimal(entry.brakeWeightP)} t');
     }
     if (entry.handbrake) {
       parts.add(entry.handbrakeForceKn != null
           ? 'RB ${formatDecimal(entry.handbrakeForceKn)} kN'
           : 'RB ano');
     }
-    if (entry.maxSpeed != null) {
-      parts.add('${formatDecimal(entry.maxSpeed)} km/h');
+    if (entry.maxSpeedEmpty != null) {
+      parts.add('prázdný ${formatDecimal(entry.maxSpeedEmpty)} km/h');
+    }
+    if (entry.maxSpeedLoaded != null) {
+      parts.add('ložený ${formatDecimal(entry.maxSpeedLoaded)} km/h');
     }
     if (entry.length != null) parts.add('${formatDecimal(entry.length)} m');
+    if (entry.axleCount != null) parts.add('${entry.axleCount} náprav');
+    if (entry.nonMetallicBlocks) parts.add('nekovové špalíky');
     return parts.join(' • ');
   }
 
@@ -110,6 +116,22 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
     );
   }
 
+  Widget _buildIntField({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        isDense: true,
+      ),
+    );
+  }
+
   Future<void> _editEntry(WagonRegistryEntry entry) async {
     final parsed = WagonNumber.parseNotes(entry.notes);
     final selectedFlags = List<String>.of(parsed.flags);
@@ -120,13 +142,18 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
         TextEditingController(text: formatDecimal(entry.brakeWeightG));
     final brakeWeightPController =
         TextEditingController(text: formatDecimal(entry.brakeWeightP));
-    final maxSpeedController =
-        TextEditingController(text: formatDecimal(entry.maxSpeed));
+    final maxSpeedEmptyController =
+        TextEditingController(text: formatDecimal(entry.maxSpeedEmpty));
+    final maxSpeedLoadedController =
+        TextEditingController(text: formatDecimal(entry.maxSpeedLoaded));
     final lengthController =
         TextEditingController(text: formatDecimal(entry.length));
+    final axleCountController =
+        TextEditingController(text: entry.axleCount?.toString() ?? '');
     final handbrakeForceController =
         TextEditingController(text: formatDecimal(entry.handbrakeForceKn));
     bool handbrake = entry.handbrake;
+    bool nonMetallicBlocks = entry.nonMetallicBlocks;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -204,7 +231,7 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
                     Expanded(
                       child: _buildDecimalField(
                         controller: brakeWeightGController,
-                        label: 'Brzdící váha G',
+                        label: 'Brzdící váha (P)',
                         suffix: 't',
                       ),
                     ),
@@ -212,17 +239,36 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
                     Expanded(
                       child: _buildDecimalField(
                         controller: brakeWeightPController,
-                        label: 'Brzdící váha P',
+                        label: 'Brzdící váha (L)',
                         suffix: 't',
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                _buildDecimalField(
-                  controller: maxSpeedController,
-                  label: 'Rychlost',
-                  suffix: 'km/h',
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDecimalField(
+                        controller: maxSpeedEmptyController,
+                        label: 'Rychlost prázdný',
+                        suffix: 'km/h',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildDecimalField(
+                        controller: maxSpeedLoadedController,
+                        label: 'Rychlost ložený',
+                        suffix: 'km/h',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildIntField(
+                  controller: axleCountController,
+                  label: 'Počet náprav',
                 ),
                 const SizedBox(height: 12),
                 SwitchListTile(
@@ -242,6 +288,15 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
                     suffix: 'kN',
                   ),
                 ],
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Nekovové špalíky'),
+                  value: nonMetallicBlocks,
+                  activeTrackColor: ThemeService.kRailAmber,
+                  onChanged: (value) {
+                    setDialogState(() => nonMetallicBlocks = value);
+                  },
+                ),
               ],
             ),
           ),
@@ -274,8 +329,11 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
         handbrake: handbrake,
         handbrakeForceKn:
             handbrake ? parseDecimal(handbrakeForceController.text) : null,
-        maxSpeed: parseDecimal(maxSpeedController.text),
+        maxSpeedEmpty: parseDecimal(maxSpeedEmptyController.text),
+        maxSpeedLoaded: parseDecimal(maxSpeedLoadedController.text),
         length: parseDecimal(lengthController.text),
+        axleCount: int.tryParse(axleCountController.text.trim()),
+        nonMetallicBlocks: nonMetallicBlocks,
       );
       await _loadEntries();
     } catch (e) {

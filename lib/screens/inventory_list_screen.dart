@@ -563,6 +563,10 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     double? totalHandbrakeKn;
     int handbrakeCount = 0;
     double? totalLength;
+    int nonMetallicBlocksCount = 0;
+    // Rychlost celého vlaku se odvíjí od nejnižší rychlosti v soupravě.
+    double? minSpeedEmpty;
+    double? minSpeedLoaded;
 
     for (final wagon in inventory.wagonNumbers) {
       if (wagon.weight != null) {
@@ -584,6 +588,17 @@ class _InventoryListScreenState extends State<InventoryListScreen>
       if (wagon.length != null) {
         totalLength = (totalLength ?? 0) + wagon.length!;
       }
+      if (wagon.nonMetallicBlocks) {
+        nonMetallicBlocksCount++;
+      }
+      if (wagon.maxSpeedEmpty != null &&
+          (minSpeedEmpty == null || wagon.maxSpeedEmpty! < minSpeedEmpty)) {
+        minSpeedEmpty = wagon.maxSpeedEmpty;
+      }
+      if (wagon.maxSpeedLoaded != null &&
+          (minSpeedLoaded == null || wagon.maxSpeedLoaded! < minSpeedLoaded)) {
+        minSpeedLoaded = wagon.maxSpeedLoaded;
+      }
     }
 
     final chips = <Widget>[
@@ -591,41 +606,53 @@ class _InventoryListScreenState extends State<InventoryListScreen>
         _buildTotalChip('Hmotnost', '${formatDecimal(totalWeight)} t'),
       if (totalBrakeWeightG != null)
         _buildTotalChip(
-            'Brzdící váha G', '${formatDecimal(totalBrakeWeightG)} t'),
+            'Brzdící váha (P)', '${formatDecimal(totalBrakeWeightG)} t'),
       if (totalBrakeWeightP != null)
         _buildTotalChip(
-            'Brzdící váha P', '${formatDecimal(totalBrakeWeightP)} t'),
+            'Brzdící váha (L)', '${formatDecimal(totalBrakeWeightP)} t'),
       if (handbrakeCount > 0)
         _buildTotalChip(
-          'Ruční brzdy',
+          'Zajišťovací síla',
           totalHandbrakeKn != null
-              ? '${formatDecimal(totalHandbrakeKn)} kN ($handbrakeCount×)'
+              ? '${totalHandbrakeKn.floor()} kN ($handbrakeCount×)'
               : '$handbrakeCount×',
         ),
+      if (minSpeedEmpty != null)
+        _buildTotalChip(
+            'Rychlost prázdný', '${formatDecimal(minSpeedEmpty)} km/h'),
+      if (minSpeedLoaded != null)
+        _buildTotalChip(
+            'Rychlost ložený', '${formatDecimal(minSpeedLoaded)} km/h'),
       if (totalLength != null)
         _buildTotalChip('Délka', '${formatDecimal(totalLength)} m'),
+      // Počet vozů s nekovovými špalíky se zobrazuje vždy, i když je nulový.
+      _buildTotalChip('Nekovové špalíky', '$nonMetallicBlocksCount×'),
     ];
 
     if (chips.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: ThemeService.kRailAmber.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: ThemeService.kRailAmber.withValues(alpha: 0.4)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Součty za soupis:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 6),
-            Wrap(spacing: 8, runSpacing: 6, children: chips),
-          ],
+      child: SizedBox(
+        width: double.infinity,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: ThemeService.kRailAmber.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+                color: ThemeService.kRailAmber.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Součty za soupis:',
+                  style:
+                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 6, children: chips),
+            ],
+          ),
         ),
       ),
     );
@@ -1087,12 +1114,12 @@ class _InventoryListScreenState extends State<InventoryListScreen>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    _buildTechnicalTotals(inventory),
                                     Text(
                                         'Seznam čísel vozů (${inventory.wagonNumbers.length}):',
                                         style: const TextStyle(
                                             fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 8),
-                                    _buildTechnicalTotals(inventory),
                                     // Tlačítko pro otočení pořadí vozů
                                     if (inventory.wagonNumbers.isNotEmpty)
                                       SizedBox(

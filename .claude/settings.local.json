@@ -4,7 +4,12 @@
       "Bash(flutter pub:*)",
       "Bash(python -c \"import json; json.load\\(open\\('assets/wagon.json', encoding='utf-8'\\)\\); print\\('OK'\\)\")",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('assets/wagon.json','utf8'\\)\\); console.log\\('OK'\\)\")",
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Bash(xargs grep -liE \"rychlost|ruční brzd|náprav\")",
+      "Bash(find . -type f \\\\\\( -iname \"*.cs\" -o -iname \"*.xaml\" \\\\\\))",
+      "Read(//tmp/**)",
+      "Bash(flutter --version)",
+      "Bash(flutter analyze *)"
     ]
   }
 }

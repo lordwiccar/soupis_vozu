@@ -31,7 +31,7 @@ class WagonRegistryService {
 
     _database = await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -49,8 +49,11 @@ class WagonRegistryService {
         brake_weight_p REAL,
         handbrake INTEGER NOT NULL DEFAULT 0,
         handbrake_kn REAL,
-        max_speed REAL,
-        length REAL
+        max_speed_empty REAL,
+        max_speed_loaded REAL,
+        length REAL,
+        axle_count INTEGER,
+        non_metallic_blocks INTEGER NOT NULL DEFAULT 0
       )
     ''');
   }
@@ -66,6 +69,20 @@ class WagonRegistryService {
       await db.execute('ALTER TABLE $_table ADD COLUMN handbrake_kn REAL');
       await db.execute('ALTER TABLE $_table ADD COLUMN max_speed REAL');
       await db.execute('ALTER TABLE $_table ADD COLUMN length REAL');
+    }
+    if (oldVersion < 3) {
+      // Rychlost se dělí na "prázdný" a "ložený" stav vozu; přidávají se
+      // i počet náprav a nekovové špalíky.
+      await db.execute('ALTER TABLE $_table ADD COLUMN max_speed_empty REAL');
+      await db
+          .execute('ALTER TABLE $_table ADD COLUMN max_speed_loaded REAL');
+      await db.execute('ALTER TABLE $_table ADD COLUMN axle_count INTEGER');
+      await db.execute(
+          'ALTER TABLE $_table ADD COLUMN non_metallic_blocks INTEGER NOT NULL DEFAULT 0');
+      // Původní jednotná hodnota rychlosti se přenese do obou nových polí,
+      // uživatel si je pak podle potřeby upraví zvlášť.
+      await db.execute(
+          'UPDATE $_table SET max_speed_empty = max_speed, max_speed_loaded = max_speed WHERE max_speed IS NOT NULL');
     }
   }
 
@@ -85,6 +102,22 @@ class WagonRegistryService {
     return WagonRegistryEntry.fromMap(rows.first);
   }
 
+  /// Najde všechny záznamy, jejichž číslo vozu končí daným sufixem
+  /// (typicky poslední trojčíslí a kontrolní číslice – 4 znaky). Používá se
+  /// při třetím, "krátkém" pokusu o naskenování, kdy se z fotky podaří
+  /// přečíst jen konec čísla.
+  static Future<List<WagonRegistryEntry>> findBySuffix(String suffix) async {
+    await initDatabase();
+
+    final rows = await _database!.query(
+      _table,
+      where: 'number LIKE ?',
+      whereArgs: ['%$suffix'],
+    );
+
+    return rows.map((row) => WagonRegistryEntry.fromMap(row)).toList();
+  }
+
   /// Zapíše aktuální stav informací o voze do registru. Vůz v registru
   /// zůstává, i když jsou všechna pole prázdná – řádek se jen aktualizuje
   /// na "prázdný" stav, nikdy se automaticky nemaže (viz [deleteEntry]).
@@ -97,8 +130,11 @@ class WagonRegistryService {
     double? brakeWeightP,
     bool handbrake = false,
     double? handbrakeForceKn,
-    double? maxSpeed,
+    double? maxSpeedEmpty,
+    double? maxSpeedLoaded,
     double? length,
+    int? axleCount,
+    bool nonMetallicBlocks = false,
   }) async {
     await initDatabase();
 
@@ -115,8 +151,11 @@ class WagonRegistryService {
           'brake_weight_p': brakeWeightP,
           'handbrake': handbrake ? 1 : 0,
           'handbrake_kn': handbrake ? handbrakeForceKn : null,
-          'max_speed': maxSpeed,
+          'max_speed_empty': maxSpeedEmpty,
+          'max_speed_loaded': maxSpeedLoaded,
           'length': length,
+          'axle_count': axleCount,
+          'non_metallic_blocks': nonMetallicBlocks ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -158,12 +197,15 @@ class WagonRegistryService {
     'Příznaky',
     'Poznámka',
     'Hmotnost vozu (t)',
-    'Brzdící váha G (t)',
-    'Brzdící váha P (t)',
+    'Brzdící váha (P) (t)',
+    'Brzdící váha (L) (t)',
     'Ruční brzda',
     'Ruční brzda (kN)',
-    'Rychlost (km/h)',
+    'Rychlost prázdný (km/h)',
+    'Rychlost ložený (km/h)',
     'Délka (m)',
+    'Počet náprav',
+    'Nekovové špalíky',
     'Aktualizováno',
   ];
 
@@ -191,8 +233,11 @@ class WagonRegistryService {
         xlsx.TextCellValue(formatDecimal(entry.brakeWeightP)),
         xlsx.TextCellValue(entry.handbrake ? 'ano' : 'ne'),
         xlsx.TextCellValue(formatDecimal(entry.handbrakeForceKn)),
-        xlsx.TextCellValue(formatDecimal(entry.maxSpeed)),
+        xlsx.TextCellValue(formatDecimal(entry.maxSpeedEmpty)),
+        xlsx.TextCellValue(formatDecimal(entry.maxSpeedLoaded)),
         xlsx.TextCellValue(formatDecimal(entry.length)),
+        xlsx.TextCellValue(entry.axleCount?.toString() ?? ''),
+        xlsx.TextCellValue(entry.nonMetallicBlocks ? 'ano' : 'ne'),
         xlsx.TextCellValue(entry.updatedAt.toIso8601String()),
       ]);
     }
@@ -238,8 +283,11 @@ class WagonRegistryService {
       final brakePCell = row.length > 5 ? _cellText(row[5]) : '';
       final handbrakeCell = row.length > 6 ? _cellText(row[6]) : '';
       final handbrakeKnCell = row.length > 7 ? _cellText(row[7]) : '';
-      final speedCell = row.length > 8 ? _cellText(row[8]) : '';
-      final lengthCell = row.length > 9 ? _cellText(row[9]) : '';
+      final speedEmptyCell = row.length > 8 ? _cellText(row[8]) : '';
+      final speedLoadedCell = row.length > 9 ? _cellText(row[9]) : '';
+      final lengthCell = row.length > 10 ? _cellText(row[10]) : '';
+      final axleCountCell = row.length > 11 ? _cellText(row[11]) : '';
+      final nonMetallicBlocksCell = row.length > 12 ? _cellText(row[12]) : '';
 
       final digits = numberCell.replaceAll(RegExp(r'[^0-9]'), '');
       if (digits.length != 12) {
@@ -259,16 +307,23 @@ class WagonRegistryService {
       final brakeWeightP = parseDecimal(brakePCell);
       final handbrake = handbrakeCell.trim().toLowerCase() == 'ano';
       final handbrakeForceKn = parseDecimal(handbrakeKnCell);
-      final maxSpeed = parseDecimal(speedCell);
+      final maxSpeedEmpty = parseDecimal(speedEmptyCell);
+      final maxSpeedLoaded = parseDecimal(speedLoadedCell);
       final length = parseDecimal(lengthCell);
+      final axleCount = int.tryParse(axleCountCell.trim());
+      final nonMetallicBlocks =
+          nonMetallicBlocksCell.trim().toLowerCase() == 'ano';
 
       final hasInfo = notes.trim().isNotEmpty ||
           weight != null ||
           brakeWeightG != null ||
           brakeWeightP != null ||
           handbrake ||
-          maxSpeed != null ||
-          length != null;
+          maxSpeedEmpty != null ||
+          maxSpeedLoaded != null ||
+          length != null ||
+          axleCount != null ||
+          nonMetallicBlocks;
       if (!hasInfo) continue;
 
       // "Ponechat existující" se vztahuje jen na vozy, které už mají
@@ -288,8 +343,11 @@ class WagonRegistryService {
         brakeWeightP: brakeWeightP,
         handbrake: handbrake,
         handbrakeForceKn: handbrakeForceKn,
-        maxSpeed: maxSpeed,
+        maxSpeedEmpty: maxSpeedEmpty,
+        maxSpeedLoaded: maxSpeedLoaded,
         length: length,
+        axleCount: axleCount,
+        nonMetallicBlocks: nonMetallicBlocks,
       );
       added++;
     }

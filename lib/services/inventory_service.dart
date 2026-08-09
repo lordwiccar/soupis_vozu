@@ -17,7 +17,7 @@ class InventoryService {
 
     _database = await openDatabase(
       path,
-      version: 3, // Zvýšit verzi pro migraci
+      version: 4, // Zvýšit verzi pro migraci
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -52,8 +52,11 @@ class InventoryService {
         brake_weight_p REAL,
         handbrake INTEGER NOT NULL DEFAULT 0,
         handbrake_kn REAL,
-        max_speed REAL,
+        max_speed_empty REAL,
+        max_speed_loaded REAL,
         length REAL,
+        axle_count INTEGER,
+        non_metallic_blocks INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (inventory_id) REFERENCES $_inventoryTable (id)
       )
     ''');
@@ -88,6 +91,22 @@ class InventoryService {
           'ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed REAL');
       await db
           .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN length REAL');
+    }
+    if (oldVersion < 4) {
+      // Rychlost se dělí na "prázdný" a "ložený" stav vozu; přidávají se
+      // i počet náprav a nekovové špalíky.
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed_empty REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed_loaded REAL');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN axle_count INTEGER');
+      await db.execute(
+          'ALTER TABLE $_wagonNumberTable ADD COLUMN non_metallic_blocks INTEGER NOT NULL DEFAULT 0');
+      // Původní jednotná hodnota rychlosti se přenese do obou nových polí,
+      // uživatel si je pak podle potřeby upraví zvlášť.
+      await db.execute(
+          'UPDATE $_wagonNumberTable SET max_speed_empty = max_speed, max_speed_loaded = max_speed WHERE max_speed IS NOT NULL');
     }
   }
 
@@ -171,8 +190,12 @@ class InventoryService {
               'brake_weight_p': wagon['brakeWeightP'],
               'handbrake': (wagon['handbrake'] as bool? ?? false) ? 1 : 0,
               'handbrake_kn': wagon['handbrakeForceKn'],
-              'max_speed': wagon['maxSpeed'],
+              'max_speed_empty': wagon['maxSpeedEmpty'],
+              'max_speed_loaded': wagon['maxSpeedLoaded'],
               'length': wagon['length'],
+              'axle_count': wagon['axleCount'],
+              'non_metallic_blocks':
+                  (wagon['nonMetallicBlocks'] as bool? ?? false) ? 1 : 0,
             },
           );
 
@@ -206,8 +229,11 @@ class InventoryService {
           brakeWeightP: wagon['brakeWeightP'] as double?,
           handbrake: wagon['handbrake'] as bool? ?? false,
           handbrakeForceKn: wagon['handbrakeForceKn'] as double?,
-          maxSpeed: wagon['maxSpeed'] as double?,
+          maxSpeedEmpty: wagon['maxSpeedEmpty'] as double?,
+          maxSpeedLoaded: wagon['maxSpeedLoaded'] as double?,
           length: wagon['length'] as double?,
+          axleCount: wagon['axleCount'] as int?,
+          nonMetallicBlocks: wagon['nonMetallicBlocks'] as bool? ?? false,
         );
       }
 
@@ -350,8 +376,11 @@ class InventoryService {
         'brake_weight_p': wagon.brakeWeightP,
         'handbrake': wagon.handbrake ? 1 : 0,
         'handbrake_kn': wagon.handbrakeForceKn,
-        'max_speed': wagon.maxSpeed,
+        'max_speed_empty': wagon.maxSpeedEmpty,
+        'max_speed_loaded': wagon.maxSpeedLoaded,
         'length': wagon.length,
+        'axle_count': wagon.axleCount,
+        'non_metallic_blocks': wagon.nonMetallicBlocks ? 1 : 0,
       };
 
       // Přidat nové pořadové číslo pokud je poskytnuto
@@ -384,8 +413,11 @@ class InventoryService {
         brakeWeightP: wagon.brakeWeightP,
         handbrake: wagon.handbrake,
         handbrakeForceKn: wagon.handbrakeForceKn,
-        maxSpeed: wagon.maxSpeed,
+        maxSpeedEmpty: wagon.maxSpeedEmpty,
+        maxSpeedLoaded: wagon.maxSpeedLoaded,
         length: wagon.length,
+        axleCount: wagon.axleCount,
+        nonMetallicBlocks: wagon.nonMetallicBlocks,
       );
     } catch (e) {
       debugPrint('Chyba při aktualizaci čísla vozu: $e');
