@@ -4,6 +4,11 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Release signing - nikdy necommitovat, jsou to citlivá hesla a soukromý klíč
+android/key.properties
+android/**/*.jks
+android/**/*.keystore
 .atom/
 .build/
 .buildlog/

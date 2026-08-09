@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zásady ochrany osobních údajů – Soupis vozů</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+    line-height: 1.6;
+    color: #1b2530;
+    background: #ffffff;
+  }
+  h1 { font-size: 1.6em; margin-bottom: 4px; }
+  h2 { font-size: 1.15em; margin-top: 2em; border-bottom: 1px solid #e2e6ea; padding-bottom: 6px; }
+  .updated { color: #667085; font-size: 0.9em; margin-bottom: 2em; }
+  ul { padding-left: 1.3em; }
+  li { margin-bottom: 0.4em; }
+  code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
+  a { color: #1a5fb4; }
+  footer { margin-top: 3em; color: #667085; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<h1>Zásady ochrany osobních údajů</h1>
+<p class="updated">Aplikace Soupis vozů · White Whale Media · Aktualizováno: 9. 8. 2026</p>
+
+<p>
+Tyto zásady popisují, jaká data aplikace <strong>Soupis vozů</strong> zpracovává a jak s nimi nakládá.
+Aplikaci provozuje White Whale Media. V případě dotazů nás kontaktujte na
+<a href="mailto:lord.wiccar@gmail.com">lord.wiccar@gmail.com</a>.
+</p>
+
+<h2>Jaká data aplikace zpracovává</h2>
+<ul>
+  <li>
+    <strong>Fotografie vozů (kamera).</strong> Kamera se používá výhradně ke skenování
+    identifikačních čísel železničních vozů. Pořízené snímky se buď zpracují přímo
+    v zařízení (on-device OCR), nebo — pokud si v nastavení aktivně zapnete a nakonfigurujete
+    volitelný režim "AI rozpoznávání" a vložíte vlastní API klíč — jsou odeslány přímo z vašeho
+    zařízení poskytovateli OpenAI nebo Anthropic ke zpracování textu. V takovém případě se na
+    zpracování snímku vztahují zásady ochrany osobních údajů daného poskytovatele
+    (<a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI</a>,
+    <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic</a>).
+    Fotografie se nikam jinam neodesílají a autor aplikace k nim nemá přístup.
+  </li>
+  <li>
+    <strong>Poloha.</strong> Aplikace může se souhlasem uživatele zjistit aktuální polohu
+    (pouze při aktivním používání aplikace, nikdy na pozadí) a přibližný název místa
+    uložit u záznamu soupisu jako informaci o tom, kde byl soupis pořízen. Poloha se ukládá
+    pouze lokálně v databázi v zařízení.
+  </li>
+  <li>
+    <strong>Kontakty pro sdílení.</strong> Jména a e-mailové adresy, které si sami zadáte
+    pro účely odeslání soupisu e-mailem, se ukládají lokálně v zařízení, aby je nebylo nutné
+    zadávat opakovaně.
+  </li>
+  <li>
+    <strong>Data o vozech a soupisech</strong>, která ručně zadáte nebo naskenujete, se ukládají
+    lokálně v databázi v zařízení.
+  </li>
+</ul>
+
+<h2>Kde se data ukládají</h2>
+<p>
+Veškerá data (soupisy, databáze vozů, kontakty, nastavení) se ukládají výhradně lokálně na
+vašem zařízení. Aplikace neprovozuje žádný vlastní server a data nesbírá ani neukládá na
+straně White Whale Media. Volitelně zadaný API klíč pro AI rozpoznávání se ukládá zašifrovaně
+přímo v zařízení (Android Keystore / šifrované úložiště).
+</p>
+
+<h2>Sdílení dat s třetími stranami</h2>
+<p>
+Data se sdílí s třetí stranou pouze ve dvou případech, a vždy jen na váš přímý pokyn:
+</p>
+<ul>
+  <li>Odesláním soupisu e-mailem přes e-mailového klienta ve vašem zařízení.</li>
+  <li>Odesláním fotografie ke zpracování poskytovateli OpenAI nebo Anthropic, pokud si tuto
+    volitelnou funkci sami zapnete a nastavíte vlastní API klíč.</li>
+</ul>
+<p>Aplikace neobsahuje reklamy, analytické ani sledovací nástroje třetích stran a data nikomu neprodává.</p>
+
+<h2>Oprávnění</h2>
+<ul>
+  <li><strong>Kamera</strong> – ke skenování čísel vozů.</li>
+  <li><strong>Poloha (jen při používání aplikace)</strong> – k zaznamenání místa pořízení soupisu.</li>
+  <li><strong>Internet</strong> – k volitelnému odeslání fotografie AI poskytovateli.</li>
+</ul>
+
+<h2>Smazání dat</h2>
+<p>
+Veškerá lokálně uložená data (soupisy, databáze vozů, kontakty, uložený API klíč) odstraníte
+odinstalováním aplikace nebo vymazáním dat aplikace v nastavení systému Android.
+</p>
+
+<h2>Děti</h2>
+<p>Aplikace není určena dětem a vědomě neshromažďuje údaje osob mladších 13 let.</p>
+
+<h2>Změny těchto zásad</h2>
+<p>Tyto zásady můžeme čas od času aktualizovat. Aktuální verze je vždy dostupná na této stránce.</p>
+
+<footer>
+  Kontakt: <a href="mailto:lord.wiccar@gmail.com">lord.wiccar@gmail.com</a>
+</footer>
+
+</body>
+</html>

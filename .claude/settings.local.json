@@ -9,7 +9,20 @@
       "Bash(find . -type f \\\\\\( -iname \"*.cs\" -o -iname \"*.xaml\" \\\\\\))",
       "Read(//tmp/**)",
       "Bash(flutter --version)",
-      "Bash(flutter analyze *)"
+      "Bash(flutter analyze *)",
+      "Bash(grep -v -E '\\\\.git|/build/|/\\\\.dart_tool')",
+      "Bash(grep -v \"//\")",
+      "Read(//e/flutter/packages/flutter_tools/gradle/src/main/kotlin/**)",
+      "Read(//e/flutter/**)",
+      "Bash(git config *)",
+      "Bash('/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe' -list -v -keystore /e/Git/soupis_vozu/android/upload-keystore.jks -storepass N8hN0COJnUckCgDO7ckFJlXmaaQm)",
+      "Bash(git status *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(flutter build *)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\" PATH=\"/c/Program Files/Android/Android Studio/jbr/bin:$PATH\" /c/Users/lordw/AppData/Local/Android/sdk/build-tools/37.0.0/apksigner.bat verify *)",
+      "PowerShell(Get-MpThreatDetection *)",
+      "Bash(echo \"BUILD_EXIT=$?\")"
     ]
   }
 }

@@ -438,7 +438,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
                   // Vytvoříme přímý kanál do Kotlinu na STRANĚ FLUTTERU
                   const platform =
-                      MethodChannel('com.example.soupis_vozu/email');
+                      MethodChannel('media.whitewhale.soupisvozu/email');
 
                   try {
                     // Posíláme data do Androidu
@@ -581,8 +581,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
       if (wagon.handbrake) {
         handbrakeCount++;
         if (wagon.handbrakeForceKn != null) {
-          totalHandbrakeKn =
-              (totalHandbrakeKn ?? 0) + wagon.handbrakeForceKn!;
+          totalHandbrakeKn = (totalHandbrakeKn ?? 0) + wagon.handbrakeForceKn!;
         }
       }
       if (wagon.length != null) {
@@ -647,8 +646,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Součty za soupis:',
-                  style:
-                      TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 6),
               Wrap(spacing: 8, runSpacing: 6, children: chips),
             ],
@@ -660,7 +658,8 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
   Widget _buildTotalChip(String label, String value) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? ThemeService.kRailCream : ThemeService.kRailBlack;
+    final textColor =
+        isDark ? ThemeService.kRailCream : ThemeService.kRailBlack;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

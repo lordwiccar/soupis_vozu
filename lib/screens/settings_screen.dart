@@ -459,6 +459,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           trailing: const Icon(Icons.open_in_new, size: 16),
           onTap: _openLinkedIn,
         ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.privacy_tip_outlined,
+          title: 'Zásady ochrany osobních údajů',
+          subtitle: 'Jaká data aplikace zpracovává a jak s nimi nakládá',
+          trailing: const Icon(Icons.open_in_new, size: 16),
+          onTap: _openPrivacyPolicy,
+        ),
       ],
     );
   }
@@ -640,6 +648,21 @@ class _SettingsScreenState extends State<SettingsScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Nelze otevřít odkaz na LinkedIn profil')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final url =
+        Uri.parse('https://lordwiccar.github.io/soupis_vozu/privacy.html');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Nelze otevřít zásady ochrany osobních údajů')),
         );
       }
     }
