@@ -60,3 +60,6 @@ assets/slapmac.dmg
 
 # Backup files
 *.backup
+
+# Claude Code local settings (per-user, not shared)
+.claude/settings.local.json
