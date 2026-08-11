@@ -22,7 +22,8 @@ class ScanScreenFixed extends StatefulWidget {
   final String? inventoryId;
   final List<String>? initialWagonNumbers;
 
-  const ScanScreenFixed({super.key, this.inventoryId, this.initialWagonNumbers});
+  const ScanScreenFixed(
+      {super.key, this.inventoryId, this.initialWagonNumbers});
 
   @override
   State<ScanScreenFixed> createState() => _ScanScreenFixedState();
@@ -357,8 +358,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     final apiKey = await ScanSettingsService.getApiKey();
 
     if (provider == null || apiKey == null || apiKey.isEmpty) {
-      throw Exception(
-          'Nakonfigurujte AI skenování v Nastavení → Skenování');
+      throw Exception('Nakonfigurujte AI skenování v Nastavení → Skenování');
     }
 
     return AiOcrService.extractWagonNumbers(imagePath, provider, apiKey);
@@ -420,8 +420,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       return;
     }
 
-    _showOverlay(
-        'Zkouším rozpoznat poslední čtyři znaky čísla…', ThemeService.kRailAmber);
+    _showOverlay('Zkouším rozpoznat poslední čtyři znaky čísla…',
+        ThemeService.kRailAmber);
 
     try {
       final image = await _cameraController!.takePicture();
@@ -506,7 +506,11 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
             r'([0-9])(?![0-9])');
     final m1 = p1.firstMatch(text);
     if (m1 != null) {
-      final num = m1.group(1)! + m1.group(2)! + m1.group(3)! + m1.group(4)! + m1.group(5)!;
+      final num = m1.group(1)! +
+          m1.group(2)! +
+          m1.group(3)! +
+          m1.group(4)! +
+          m1.group(5)!;
       debugPrint('UIC P1: $num');
       return [num];
     }
@@ -518,7 +522,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
             r'([0-9])(?![0-9])');
     final m2 = p2.firstMatch(text);
     if (m2 != null) {
-      final num = m2.group(1)! + m2.group(2)! + m2.group(3)! + m2.group(4)! + m2.group(5)! + m2.group(6)!;
+      final num = m2.group(1)! +
+          m2.group(2)! +
+          m2.group(3)! +
+          m2.group(4)! +
+          m2.group(5)! +
+          m2.group(6)!;
       debugPrint('UIC P2 (split XXXX): $num');
       return [num];
     }
@@ -539,7 +548,11 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         r'(?<![0-9])([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{4})[^0-9\n]{0,3}([0-9]{3})[^0-9\n]{0,2}([0-9])(?![0-9])');
     final m4a = p4a.firstMatch(text);
     if (m4a != null) {
-      final num = m4a.group(1)! + m4a.group(2)! + m4a.group(3)! + m4a.group(4)! + m4a.group(5)!;
+      final num = m4a.group(1)! +
+          m4a.group(2)! +
+          m4a.group(3)! +
+          m4a.group(4)! +
+          m4a.group(5)!;
       debugPrint('UIC P4a (flex XXXX): $num');
       return [num];
     }
@@ -548,7 +561,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         r'(?<![0-9])([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{2})[^0-9\n]{0,3}([0-9]{3})[^0-9\n]{0,2}([0-9])(?![0-9])');
     final m4b = p4b.firstMatch(text);
     if (m4b != null) {
-      final num = m4b.group(1)! + m4b.group(2)! + m4b.group(3)! + m4b.group(4)! + m4b.group(5)! + m4b.group(6)!;
+      final num = m4b.group(1)! +
+          m4b.group(2)! +
+          m4b.group(3)! +
+          m4b.group(4)! +
+          m4b.group(5)! +
+          m4b.group(6)!;
       debugPrint('UIC P4b (flex split): $num');
       return [num];
     }
@@ -954,8 +972,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
 
     try {
       // Fetch the full wagon data from the database
-      final wagons =
-          await InventoryService.getWagonNumbersForInventory(_currentInventoryId!);
+      final wagons = await InventoryService.getWagonNumbersForInventory(
+          _currentInventoryId!);
       final wagonData = wagons.firstWhere(
         (w) => w.number == wagonNumber.replaceAll(RegExp(r'[^0-9]'), ''),
         orElse: () => WagonNumber(
@@ -1085,8 +1103,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                         ),
                         child: const Text(
                           'Zaměřte na číslo vozu a stiskněte tlačítko',
-                          style:
-                              TextStyle(color: Colors.white, fontSize: 13),
+                          style: TextStyle(color: Colors.white, fontSize: 13),
                           textAlign: TextAlign.center,
                         ),
                       ),
@@ -1154,8 +1171,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                 child: Text(
                                   'Zatím žádné vozy',
                                   style: TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 14),
+                                      color: Colors.white54, fontSize: 14),
                                 ),
                               )
                             : ListView.builder(
@@ -1166,16 +1182,13 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                 itemBuilder: (context, index) {
                                   final actualIndex =
                                       _detectedNumbers.length - 1 - index;
-                                  final number =
-                                      _detectedNumbers[actualIndex];
+                                  final number = _detectedNumbers[actualIndex];
                                   final isValid =
-                                      UicValidator.validateUicNumber(
-                                          number);
+                                      UicValidator.validateUicNumber(number);
                                   final isComplete =
                                       _wagonComplete[number] ?? false;
                                   return Padding(
-                                    padding:
-                                        const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.only(bottom: 6),
                                     child: Row(
                                       children: [
                                         Icon(
@@ -1242,36 +1255,43 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                 ),
               ),
               // Tlačítko skenovat
-              Container(
-                color: ThemeService.kRailBlack,
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: (_isProcessing || _isDisposing)
-                        ? null
-                        : _captureAndAnalyze,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ThemeService.kRailAmber,
-                      foregroundColor: ThemeService.kRailBlack,
-                      disabledBackgroundColor:
-                          ThemeService.kRailAmber.withValues(alpha: 0.4),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+              // SafeArea zajistí, že tlačítko nezmizí pod systémovou
+              // navigační lištou (relevantní hlavně u klasické tlačítkové
+              // navigace, ne u gest).
+              SafeArea(
+                top: false,
+                child: Container(
+                  color: ThemeService.kRailBlack,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: (_isProcessing || _isDisposing)
+                          ? null
+                          : _captureAndAnalyze,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: ThemeService.kRailAmber,
+                        foregroundColor: ThemeService.kRailBlack,
+                        disabledBackgroundColor:
+                            ThemeService.kRailAmber.withValues(alpha: 0.4),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
                       ),
-                    ),
-                    icon: _isProcessing
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                color: ThemeService.kRailBlack, strokeWidth: 2))
-                        : const Icon(Icons.document_scanner_outlined),
-                    label: Text(
-                      _isProcessing ? 'ZPRACOVÁVÁM...' : 'SKENOVAT',
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700),
+                      icon: _isProcessing
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                  color: ThemeService.kRailBlack,
+                                  strokeWidth: 2))
+                          : const Icon(Icons.document_scanner_outlined),
+                      label: Text(
+                        _isProcessing ? 'ZPRACOVÁVÁM...' : 'SKENOVAT',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
                 ),
@@ -1353,12 +1373,10 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final digits =
-              controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+          final digits = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
           final digitCount = digits.length;
           final isComplete = digitCount == 12;
-          final isValid =
-              isComplete && UicValidator.validateUicNumber(digits);
+          final isValid = isComplete && UicValidator.validateUicNumber(digits);
 
           final Color borderColor;
           if (isComplete) {
@@ -1368,77 +1386,79 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           }
 
           return AlertDialog(
-        title: const Text('Opravit číslo vozu'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Zadejte správné číslo vozu:'),
-            const SizedBox(height: 16),
-            TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                inputFormatters: [_UicInputFormatter()],
-                onChanged: (value) => setDialogState(() {}),
-                decoration: InputDecoration(
-                  labelText: 'Číslo vozu',
-                  hintText: 'XX XX XXXX XXX-X',
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: BorderSide(
-                      color: isComplete
-                          ? borderColor
-                          : Theme.of(context).colorScheme.primary,
-                      width: 2,
-                    ),
-                  ),
-                  counterText: '$digitCount / 12',
-                  counterStyle: TextStyle(
-                    color: isComplete
-                        ? (isValid ? Colors.green : Colors.red)
-                        : null,
-                  ),
-                )),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Zrušit')),
-          TextButton(
-            onPressed: () async {
-              final newNumber = controller.text.trim();
-              if (newNumber.isNotEmpty) {
-                final isValid = UicValidator.validateUicNumber(newNumber);
-                final newFormatted = UicValidator.formatUicNumber(newNumber);
-                final nav = Navigator.of(context);
+            title: const Text('Opravit číslo vozu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Zadejte správné číslo vozu:'),
+                const SizedBox(height: 16),
+                TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [_UicInputFormatter()],
+                    onChanged: (value) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Číslo vozu',
+                      hintText: 'XX XX XXXX XXX-X',
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(
+                          color: isComplete
+                              ? borderColor
+                              : Theme.of(context).colorScheme.primary,
+                          width: 2,
+                        ),
+                      ),
+                      counterText: '$digitCount / 12',
+                      counterStyle: TextStyle(
+                        color: isComplete
+                            ? (isValid ? Colors.green : Colors.red)
+                            : null,
+                      ),
+                    )),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Zrušit')),
+              TextButton(
+                onPressed: () async {
+                  final newNumber = controller.text.trim();
+                  if (newNumber.isNotEmpty) {
+                    final isValid = UicValidator.validateUicNumber(newNumber);
+                    final newFormatted =
+                        UicValidator.formatUicNumber(newNumber);
+                    final nav = Navigator.of(context);
 
-                // Přidáme opravené číslo jako nový záznam místo aktualizace
-                final wagonData = await _buildWagonData(
-                    newNumber, newFormatted, isValid, order);
+                    // Přidáme opravené číslo jako nový záznam místo aktualizace
+                    final wagonData = await _buildWagonData(
+                        newNumber, newFormatted, isValid, order);
 
-                await InventoryService.addWagonNumbersBatch(
-                    _currentInventoryId!, [wagonData]);
+                    await InventoryService.addWagonNumbersBatch(
+                        _currentInventoryId!, [wagonData]);
 
-                if (mounted) {
-                  nav.pop();
-                  _showEditResult(newFormatted, isValid);
+                    if (mounted) {
+                      nav.pop();
+                      _showEditResult(newFormatted, isValid);
 
-                  // Přidáme opravené číslo také do seznamu detekovaných čísel pro zobrazení v UI
-                  setState(() {
-                    _detectedNumbers.add(newNumber);
-                    _totalWagonCount++; // Aktualizujeme celkový počet
-                    _nextOrderNumber++;
-                    _wagonComplete[newNumber] = _isWagonDataComplete(wagonData);
-                  });
-                }
-              }
-            },
-            child: const Text('Uložit'),
-          ),
-        ],
+                      // Přidáme opravené číslo také do seznamu detekovaných čísel pro zobrazení v UI
+                      setState(() {
+                        _detectedNumbers.add(newNumber);
+                        _totalWagonCount++; // Aktualizujeme celkový počet
+                        _nextOrderNumber++;
+                        _wagonComplete[newNumber] =
+                            _isWagonDataComplete(wagonData);
+                      });
+                    }
+                  }
+                },
+                child: const Text('Uložit'),
+              ),
+            ],
           );
         },
       ),

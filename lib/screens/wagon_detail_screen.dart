@@ -58,8 +58,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     _handbrakeForceController.text =
         formatDecimal(widget.wagon.handbrakeForceKn);
     _maxSpeedEmptyController.text = formatDecimal(widget.wagon.maxSpeedEmpty);
-    _maxSpeedLoadedController.text =
-        formatDecimal(widget.wagon.maxSpeedLoaded);
+    _maxSpeedLoadedController.text = formatDecimal(widget.wagon.maxSpeedLoaded);
     _lengthController.text = formatDecimal(widget.wagon.length);
     _axleCountController.text = widget.wagon.axleCount?.toString() ?? '';
     _nonMetallicBlocks = widget.wagon.nonMetallicBlocks;
@@ -650,54 +649,59 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Tlačítko pro odstranění vozu
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _showDeleteWagonDialog(),
-                icon: const Icon(Icons.delete, color: Colors.red),
-                label: const Text('Odstranit vůz ze soupisu'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      bottomNavigationBar: SafeArea(
+        // Zajistí, že tlačítka nezmizí pod systémovou navigační lištou
+        // (relevantní hlavně u klasické tlačítkové navigace, ne u gest).
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Tlačítko pro odstranění vozu
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showDeleteWagonDialog(),
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  label: const Text('Odstranit vůz ze soupisu'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            // Hlavní tlačítka
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Zpět'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _updateWagon,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: widget.wagon.isValid
-                          ? ThemeService.kRailAmber
-                          : Colors.orange,
-                      foregroundColor: ThemeService.kRailBlack,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+              const SizedBox(height: 8),
+              // Hlavní tlačítka
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Zpět'),
                     ),
-                    child: const Text('ULOŽIT ZMĚNY'),
                   ),
-                ),
-              ],
-            ),
-          ],
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _updateWagon,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: widget.wagon.isValid
+                            ? ThemeService.kRailAmber
+                            : Colors.orange,
+                        foregroundColor: ThemeService.kRailBlack,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                      ),
+                      child: const Text('ULOŽIT ZMĚNY'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

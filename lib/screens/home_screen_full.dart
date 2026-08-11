@@ -181,95 +181,102 @@ class _HomeScreenFullState extends State<HomeScreenFull>
           ),
 
           // Sekce posledních soupisů
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            decoration: BoxDecoration(
-              color: isDark ? ThemeService.kRailCharcoal : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: ThemeService.kRailAmber.withValues(alpha: 0.6),
-                  width: 2,
-                ),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.history,
-                      color: ThemeService.kRailAmber,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'POSLEDNÍ SOUPISY',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            letterSpacing: 1.0,
-                          ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                if (newestInventories.isEmpty)
-                  Text(
-                    'Zatím žádné soupisy',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  )
-                else
-                  ...newestInventories.map((inventory) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: InkWell(
-                          onTap: () =>
-                              Navigator.pushNamed(context, '/inventories'),
-                          borderRadius: BorderRadius.circular(4),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: isDark
-                                  ? ThemeService.kRailSteel
-                                      .withValues(alpha: 0.35)
-                                  : ThemeService.kRailCream,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border(
-                                left: BorderSide(
-                                  color: ThemeService.kRailAmber,
-                                  width: 3,
-                                ),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  inventory.name,
-                                  style: Theme.of(context).textTheme.titleSmall,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Vytvořeno: ${DateFormat.yMd().add_Hm().format(inventory.createdAt)}  ·  Vozů: ${inventory.wagonNumbers.length}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      )),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/inventories'),
-                    icon: const Icon(Icons.list_alt, size: 18),
-                    label: const Text('VŠECHNY SOUPISY'),
+          // SafeArea zajistí, že obsah nezmizí pod systémovou navigační
+          // lištou (relevantní hlavně u klasické tlačítkové navigace).
+          SafeArea(
+            top: false,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                color: isDark ? ThemeService.kRailCharcoal : Colors.white,
+                border: Border(
+                  top: BorderSide(
+                    color: ThemeService.kRailAmber.withValues(alpha: 0.6),
+                    width: 2,
                   ),
                 ),
-              ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.history,
+                        color: ThemeService.kRailAmber,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'POSLEDNÍ SOUPISY',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              letterSpacing: 1.0,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (newestInventories.isEmpty)
+                    Text(
+                      'Zatím žádné soupisy',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    )
+                  else
+                    ...newestInventories.map((inventory) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: InkWell(
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/inventories'),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? ThemeService.kRailSteel
+                                        .withValues(alpha: 0.35)
+                                    : ThemeService.kRailCream,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border(
+                                  left: BorderSide(
+                                    color: ThemeService.kRailAmber,
+                                    width: 3,
+                                  ),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    inventory.name,
+                                    style:
+                                        Theme.of(context).textTheme.titleSmall,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Vytvořeno: ${DateFormat.yMd().add_Hm().format(inventory.createdAt)}  ·  Vozů: ${inventory.wagonNumbers.length}',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/inventories'),
+                      icon: const Icon(Icons.list_alt, size: 18),
+                      label: const Text('VŠECHNY SOUPISY'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
