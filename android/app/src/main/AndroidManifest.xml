@@ -1,9 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    
+    <!-- Appka zvuk nepoužívá; RECORD_AUDIO sem přidává plugin camera
+         kvůli podpoře nahrávání videa, kterou nevyužíváme. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
+
+
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />

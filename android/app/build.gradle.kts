@@ -63,6 +63,15 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+
+            // Minifikace (R8) + shrink nepoužitých zdrojů - zmenší výsledný AAB.
+            // Vlastní pravidla (proguard-rules.pro) řeší known R8 issue s ML Kit.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
