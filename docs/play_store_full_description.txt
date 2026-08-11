@@ -1,0 +1,31 @@
+Soupis vozů je aplikace pro rychlou a přesnou evidenci železničních nákladních vozů přímo v terénu – bez tužky, papíru a přepisování na počítači po směně.
+
+PRO KOHO JE APLIKACE URČENA
+Aplikace je určená vozmistrům, vozovým a soupisářům, kteří potřebují na místě rychle a spolehlivě sepsat vozy stojící na koleji – ať už při přejímce, odjezdu vlaku nebo běžné revizi.
+
+CO APLIKACE UMÍ
+
+📷 Skenování čísel vozů kamerou
+Namiřte kameru na vůz a aplikace během chvilky rozpozná dvanáctimístné UIC číslo vozu – buď rozpoznáváním přímo v telefonu (funguje i bez signálu), nebo volitelně přesnějším AI rozpoznáváním pro hůř čitelné či poškozené štítky.
+
+📋 Přehledné soupisy
+Vytvářejte soupisy vozů, doplňujte poznámky a mějte vše přehledně na jednom místě – žádné rozmazané rukopisy ani ztracené papíry.
+
+🗃️ Vlastní databáze vozů
+Registr vozů si můžete naimportovat z Excelu. Aplikace pak k naskenovanému číslu sama doplní uložené údaje.
+
+📍 Místo pořízení soupisu
+Aplikace může (volitelně) k soupisu přiřadit místo, kde vznikl, takže vždy víte, kde a kdy byl pořízen.
+
+📤 Export a sdílení
+Hotový soupis jedním klepnutím vyexportujete do Excelu nebo odešlete e-mailem přímo z aplikace.
+
+PROČ NE TUŽKA A PAPÍR
+- Žádné špatně čitelné rukopisy ani zdlouhavé přepisování do počítače po směně
+- Méně chyb – čísla vozů se rozpoznávají strojově, ne opisují od oka
+- Soupis máte hned v digitální podobě, připravený k odeslání či dalšímu zpracování
+- Nic se neztratí ani nerozmočí v dešti – data zůstávají bezpečně uložená v telefonu
+- Rychlejší práce v terénu i při krátkém okně na uzavírce koleje
+
+SOUKROMÍ NADE VŠE
+Aplikace nemá reklamy, nesbírá analytická data a veškerá data zůstávají uložená lokálně ve vašem zařízení. Přístup k internetu se využívá jen pro volitelné funkce, které si sami aktivně zapnete.
