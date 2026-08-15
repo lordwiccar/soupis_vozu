@@ -448,8 +448,15 @@ class _SettingsScreenState extends State<SettingsScreen>
         _buildSettingsTile(
           icon: Icons.info_outline,
           title: 'O aplikaci',
-          subtitle: 'Soupis vozů – verze 1.0.0',
+          subtitle: 'Soupis vozů – verze 1.0.5',
           onTap: _showAboutDialog,
+        ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.history,
+          title: 'Changelog',
+          subtitle: 'Přehled změn v jednotlivých verzích aplikace',
+          onTap: _showChangelogDialog,
         ),
         const SizedBox(height: 8),
         _buildSettingsTile(
@@ -615,7 +622,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           children: [
             const Text('Soupis vozů'),
             const SizedBox(height: 8),
-            const Text('Verze: 1.0.0'),
+            const Text('Verze: 1.0.5'),
             const SizedBox(height: 8),
             const Text(
                 'Aplikace pro vytváření soupisů železničních vozů.'),
@@ -632,6 +639,105 @@ class _SettingsScreenState extends State<SettingsScreen>
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Historie verzí zobrazená v dialogu changelogu – udržuje se ručně
+  /// souběžně s CHANGELOG.md v kořeni repozitáře.
+  static const List<Map<String, dynamic>> _changelogEntries = [
+    {
+      'version': '1.0.5',
+      'date': '15. 8. 2026',
+      'notes': [
+        'Oprava: ruční zadání čísla vozu (i oprava nerozpoznaného/neplatného '
+            'čísla) teď správně kontroluje databázi vozů – dřív se u ručně '
+            'zadaných čísel nenačetly uložené technické údaje ani hláška '
+            'o nalezení v databázi.',
+        'V Nastavení → O aplikaci přidán přehled changelogu.',
+      ],
+    },
+    {
+      'version': '1.0.4',
+      'date': '12. 8. 2026',
+      'notes': [
+        'Oprava: sekce "Poslední soupisy" na hlavní obrazovce se u zařízení '
+            's klasickou tlačítkovou navigací schovávala pod systémovou '
+            'navigační lištu.',
+      ],
+    },
+    {
+      'version': '1.0.3',
+      'date': '12. 8. 2026',
+      'notes': [
+        'Oprava: tlačítka ve spodní části obrazovky (skenování i detail '
+            'vozu) se u zařízení s klasickou tlačítkovou navigací '
+            'schovávala pod systémovou navigační lištu.',
+      ],
+    },
+    {
+      'version': '1.0.2',
+      'date': '11. 8. 2026',
+      'notes': [
+        'Drobné doladění release procesu před prvním zveřejněním na Google '
+            'Play.',
+      ],
+    },
+    {
+      'version': '1.0.1',
+      'date': '11. 8. 2026',
+      'notes': [
+        'Odebráno nepoužité oprávnění k nahrávání zvuku.',
+        'Zapnuta minifikace a zmenšení release buildu.',
+      ],
+    },
+    {
+      'version': '1.0.0',
+      'date': null,
+      'notes': ['První release verze.'],
+    },
+  ];
+
+  void _showChangelogDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Changelog'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final entry in _changelogEntries) ...[
+                  Text(
+                    entry['date'] != null
+                        ? 'Verze ${entry['version']} (${entry['date']})'
+                        : 'Verze ${entry['version']}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(color: ThemeService.kRailAmber),
+                  ),
+                  const SizedBox(height: 6),
+                  for (final note in entry['notes'] as List<String>)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4, left: 4),
+                      child: Text('•  $note'),
+                    ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
           ),
         ],
       ),

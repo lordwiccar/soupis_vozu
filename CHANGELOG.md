@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.5+6 (2026-08-15)
+- Oprava: při ručním zadání čísla vozu (nebo opravě nerozpoznaného/neplatného
+  čísla) se do porovnání s databází vozů posílal naformátovaný text místo
+  čistých číslic, takže se u ručně zadaných čísel neprojevila kontrola
+  registru vozů (nenačetly se uložené technické údaje ani hláška o nalezení
+  v databázi). Ruční zadání teď prochází stejnou kontrolou jako automaticky
+  rozpoznané číslo.
+- V Nastavení → O aplikaci přidán přehled changelogu.
+
 ## 1.0.4+5 (2026-08-12)
 - Oprava: sekce "Poslední soupisy" na hlavní obrazovce se u zařízení
   s klasickou tlačítkovou navigací schovávala pod systémovou navigační

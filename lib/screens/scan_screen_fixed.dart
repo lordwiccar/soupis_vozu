@@ -721,7 +721,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
               ),
               ElevatedButton(
                 onPressed: () {
-                  final input = controller.text.trim();
+                  // Vracíme čisté číslice bez formátování – stejný tvar,
+                  // v jakém pracují i automaticky detekovaná čísla, aby
+                  // proti němu správně fungovalo vyhledání v registru vozů
+                  // i uložení do soupisu.
+                  final input =
+                      controller.text.replaceAll(RegExp(r'[^0-9]'), '');
                   if (input.isNotEmpty) {
                     Navigator.of(context).pop(input);
                   }
@@ -1427,7 +1432,10 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                   child: const Text('Zrušit')),
               TextButton(
                 onPressed: () async {
-                  final newNumber = controller.text.trim();
+                  // Čisté číslice bez formátování – viz vysvětlení u
+                  // ručního zadání v _showManualInputDialog.
+                  final newNumber =
+                      controller.text.replaceAll(RegExp(r'[^0-9]'), '');
                   if (newNumber.isNotEmpty) {
                     final isValid = UicValidator.validateUicNumber(newNumber);
                     final newFormatted =
