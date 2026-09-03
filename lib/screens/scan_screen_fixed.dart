@@ -65,6 +65,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   // Zda má daný vůz (klíč = číslo bez formátování) v databázi vyplněné
   // všechny sledované technické údaje – řídí malou ikonku u čísla v seznamu.
   final Map<String, bool> _wagonComplete = {};
+  // Zda má daný vůz v databázi zapsaný příznak nebo poznámku (tedy vedenou
+  // závadu) – řídí oranžový vykřičník u čísla v seznamu.
+  final Map<String, bool> _wagonHasDefect = {};
   late final TextRecognizer _textRecognizer;
   final bool _isMobilePlatform = !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -184,6 +187,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           _nextOrderNumber = wagons.length + 1;
           for (final wagon in wagons) {
             _wagonComplete[wagon.number] = wagon.hasCompleteInfo;
+            final parsed = WagonNumber.parseNotes(wagon.notes);
+            _wagonHasDefect[wagon.number] =
+                parsed.flags.isNotEmpty || parsed.text.trim().isNotEmpty;
           }
         });
       }
@@ -944,16 +950,141 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         _currentInventoryId!, [wagonData]);
 
     if (mounted && !_isDisposing) {
+      final parsedNotes = WagonNumber.parseNotes(wagonData['notes'] as String?);
+      final hasDefect =
+          parsedNotes.flags.isNotEmpty || parsedNotes.text.trim().isNotEmpty;
       setState(() {
         _detectedNumbers.add(selectedNumber);
         _totalWagonCount++; // Aktualizujeme celkový počet
         _nextOrderNumber++;
         _wagonComplete[selectedNumber] = _isWagonDataComplete(wagonData);
+        _wagonHasDefect[selectedNumber] = hasDefect;
       });
       final foundInRegistry = _wagonDataHasInfo(wagonData);
       _showMessage(foundInRegistry
           ? 'Přidáno číslo vozu: $formatted • nalezeno v databázi, informace načteny'
           : 'Přidáno číslo vozu: $formatted');
+
+      if (hasDefect) {
+        await _showDefectDialog(selectedNumber, formatted, parsedNotes);
+      }
+    }
+  }
+
+  /// Zobrazí dialog upozorňující, že naskenovaný vůz je v databázi veden se
+  /// závadou (má zapsaný příznak nebo poznámku). Uživatel může závadu
+  /// potvrdit jako trvající, rovnou ji z databáze odstranit, nebo přejít
+  /// na úpravu příznaku/poznámky.
+  Future<void> _showDefectDialog(
+    String number,
+    String formattedNumber,
+    ({List<String> flags, String text}) parsedNotes,
+  ) async {
+    if (!mounted || _isDisposing) return;
+
+    final flagsLabel = parsedNotes.flags.join(' + ');
+    final noteText = parsedNotes.text.trim();
+
+    final action = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(child: Text('Vůz veden se závadou')),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Vůz $formattedNumber je v databázi veden se závadou:'),
+            const SizedBox(height: 12),
+            if (flagsLabel.isNotEmpty)
+              Text('Příznak: $flagsLabel',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+            if (noteText.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('Poznámka: $noteText'),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('persists'),
+            child: const Text('Závada trvá'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('resolved'),
+            child: const Text('Závada odstraněna'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('edit'),
+            child: const Text('Upravit'),
+          ),
+        ],
+      ),
+    );
+
+    switch (action) {
+      case 'resolved':
+        await _clearWagonDefect(number);
+        break;
+      case 'edit':
+        await _openWagonDetail(number);
+        break;
+    }
+  }
+
+  /// Odstraní příznak i poznámku vozu ze soupisu i z trvalého registru vozů
+  /// (technické údaje zůstávají zachovány).
+  Future<void> _clearWagonDefect(String number) async {
+    if (_currentInventoryId == null || !mounted) return;
+
+    try {
+      final wagons = await InventoryService.getWagonNumbersForInventory(
+          _currentInventoryId!);
+      WagonNumber? wagon;
+      for (final w in wagons) {
+        if (w.number == number) {
+          wagon = w;
+          break;
+        }
+      }
+      if (wagon == null) return;
+
+      final cleared = WagonNumber(
+        number: wagon.number,
+        formattedNumber: wagon.formattedNumber,
+        isValid: wagon.isValid,
+        order: wagon.order,
+        scannedAt: wagon.scannedAt,
+        notes: '',
+        weight: wagon.weight,
+        brakeWeightG: wagon.brakeWeightG,
+        brakeWeightP: wagon.brakeWeightP,
+        handbrake: wagon.handbrake,
+        handbrakeForceKn: wagon.handbrakeForceKn,
+        maxSpeedEmpty: wagon.maxSpeedEmpty,
+        maxSpeedLoaded: wagon.maxSpeedLoaded,
+        length: wagon.length,
+        axleCount: wagon.axleCount,
+        nonMetallicBlocks: wagon.nonMetallicBlocks,
+      );
+
+      await InventoryService.updateWagonNumber(_currentInventoryId!, cleared);
+
+      if (mounted) {
+        setState(() {
+          _wagonHasDefect[number] = false;
+        });
+        _showMessage(
+            'Závada u vozu ${wagon.formattedNumber} byla odstraněna ze záznamu');
+      }
+    } catch (e) {
+      debugPrint('Chyba při odstraňování závady vozu: $e');
     }
   }
 
@@ -1010,9 +1141,10 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         ),
       );
 
-      // Po návratu z detailu obnovíme příznak "kompletní údaje" pro tento
-      // vůz – v detailu se mohla technická data změnit (nebo vůz smazat).
-      await _refreshWagonCompleteness(wagonData.number);
+      // Po návratu z detailu obnovíme příznaky "kompletní údaje" a "vedena
+      // závada" pro tento vůz – v detailu se mohla technická data, příznaky
+      // nebo poznámky změnit (nebo vůz smazat).
+      await _refreshWagonStatus(wagonData.number);
     } catch (e) {
       if (mounted) {
         _showError('Chyba při otevírání detailů vozu: $e');
@@ -1021,8 +1153,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   }
 
   /// Znovu načte, zda má daný vůz v aktuálním soupisu vyplněné všechny
-  /// sledované technické údaje, a promítne to do [_wagonComplete].
-  Future<void> _refreshWagonCompleteness(String number) async {
+  /// sledované technické údaje a zda je veden se závadou (příznak/poznámka),
+  /// a promítne to do [_wagonComplete] a [_wagonHasDefect].
+  Future<void> _refreshWagonStatus(String number) async {
     if (_currentInventoryId == null || !mounted) return;
     try {
       final wagons = await InventoryService.getWagonNumbersForInventory(
@@ -1038,8 +1171,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         setState(() {
           if (wagon != null) {
             _wagonComplete[number] = wagon.hasCompleteInfo;
+            final parsed = WagonNumber.parseNotes(wagon.notes);
+            _wagonHasDefect[number] =
+                parsed.flags.isNotEmpty || parsed.text.trim().isNotEmpty;
           } else {
             _wagonComplete.remove(number);
+            _wagonHasDefect.remove(number);
           }
         });
       }
@@ -1192,6 +1329,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                       UicValidator.validateUicNumber(number);
                                   final isComplete =
                                       _wagonComplete[number] ?? false;
+                                  final hasDefect =
+                                      _wagonHasDefect[number] ?? false;
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 6),
                                     child: Row(
@@ -1233,6 +1372,18 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                                                 : Colors.white24,
                                           ),
                                         ),
+                                        if (hasDefect) ...[
+                                          const Tooltip(
+                                            message:
+                                                'Databáze: vůz veden se závadou (příznak/poznámka)',
+                                            child: Icon(
+                                              Icons.warning_amber_rounded,
+                                              size: 18,
+                                              color: Colors.orange,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                        ],
                                         const SizedBox(width: 10),
                                         IconButton(
                                           icon: const Icon(
@@ -1453,6 +1604,11 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                       nav.pop();
                       _showEditResult(newFormatted, isValid);
 
+                      final parsedNotes = WagonNumber.parseNotes(
+                          wagonData['notes'] as String?);
+                      final hasDefect = parsedNotes.flags.isNotEmpty ||
+                          parsedNotes.text.trim().isNotEmpty;
+
                       // Přidáme opravené číslo také do seznamu detekovaných čísel pro zobrazení v UI
                       setState(() {
                         _detectedNumbers.add(newNumber);
@@ -1460,7 +1616,13 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                         _nextOrderNumber++;
                         _wagonComplete[newNumber] =
                             _isWagonDataComplete(wagonData);
+                        _wagonHasDefect[newNumber] = hasDefect;
                       });
+
+                      if (hasDefect) {
+                        await _showDefectDialog(
+                            newNumber, newFormatted, parsedNotes);
+                      }
                     }
                   }
                 },
