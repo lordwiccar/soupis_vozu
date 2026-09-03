@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.6+7 (2026-09-03)
+- Nově: pokud je při skenování naskenován vůz, který je v databázi vozů
+  veden se závadou (má zapsaný příznak nebo poznámku), zobrazí se dialog
+  s citací příznaku a poznámky a třemi možnostmi – "Závada trvá" (jen
+  potvrdí a pokračuje ve skenování), "Závada odstraněna" (smaže příznak
+  i poznámku ze soupisu i z trvalé databáze vozů) a "Upravit" (rovnou
+  otevře editaci příznaku/poznámky, po uložení se uživatel vrátí zpět na
+  obrazovku skenování).
+- Nově: v seznamu naskenovaných vozů (spodní část obrazovky skenování) se
+  u čísel, která mají v databázi vozů vedený příznak nebo poznámku,
+  zobrazuje oranžový vykřičník.
+
 ## 1.0.5+6 (2026-08-15)
 - Oprava: při ručním zadání čísla vozu (nebo opravě nerozpoznaného/neplatného
   čísla) se do porovnání s databází vozů posílal naformátovaný text místo

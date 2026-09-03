@@ -622,7 +622,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           children: [
             const Text('Soupis vozů'),
             const SizedBox(height: 8),
-            const Text('Verze: 1.0.5'),
+            const Text('Verze: 1.0.6'),
             const SizedBox(height: 8),
             const Text(
                 'Aplikace pro vytváření soupisů železničních vozů.'),
@@ -648,6 +648,19 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// Historie verzí zobrazená v dialogu changelogu – udržuje se ručně
   /// souběžně s CHANGELOG.md v kořeni repozitáře.
   static const List<Map<String, dynamic>> _changelogEntries = [
+    {
+      'version': '1.0.6',
+      'date': '3. 9. 2026',
+      'notes': [
+        'Nově: pokud je naskenován vůz, který je v databázi veden se '
+            'závadou (příznak nebo poznámka), zobrazí se dialog s citací '
+            'závady a možnostmi "Závada trvá", "Závada odstraněna" (smaže '
+            'příznak i poznámku z databáze) a "Upravit" (rovnou otevře '
+            'úpravu příznaku a poznámky).',
+        'Nově: v seznamu naskenovaných vozů se u vozů vedených v databázi '
+            'se závadou zobrazuje oranžový vykřičník.',
+      ],
+    },
     {
       'version': '1.0.5',
       'date': '15. 8. 2026',
