@@ -12,11 +12,14 @@ import 'package:soupis_vozu/services/uic_validator.dart';
 import 'package:soupis_vozu/services/scan_settings_service.dart';
 import 'package:soupis_vozu/services/ai_ocr_service.dart';
 import 'package:soupis_vozu/services/wagon_registry_service.dart';
+import 'package:soupis_vozu/services/tutorial_target_registry.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'wagon_detail_screen.dart';
+import '../widgets/adaptive/fold_info.dart';
+import '../widgets/adaptive/fold_two_pane.dart';
 
 class ScanScreenFixed extends StatefulWidget {
   final String? inventoryId;
@@ -79,6 +82,11 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   Color _statusColor = Colors.green;
   Timer? _statusTimer;
 
+  final _captureButtonKey = GlobalKey();
+  final _firstWagonRowKey = GlobalKey();
+  final _firstEditIconKey = GlobalKey();
+  final _backButtonKey = GlobalKey();
+
   Future<void> _toggleFlash() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return;
@@ -110,6 +118,13 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     if (widget.initialWagonNumbers != null) {
       _detectedNumbers.addAll(widget.initialWagonNumbers!);
     }
+
+    TutorialTargetRegistry.register('scan.captureButton', _captureButtonKey);
+    TutorialTargetRegistry.register('scan.firstWagonRow', _firstWagonRowKey);
+    TutorialTargetRegistry.register('scan.firstEditIcon', _firstEditIconKey);
+    TutorialTargetRegistry.register('scan.backButton', _backButtonKey);
+    TutorialTargetRegistry.registerAction(
+        'scan.openWagonDetailForDemo', _openFirstWagonDetail);
 
     if (_isMobilePlatform) {
       // Vylepšený TextRecognizer s vyšší citlivostí
@@ -244,6 +259,12 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
 
   @override
   void dispose() {
+    TutorialTargetRegistry.unregister('scan.captureButton');
+    TutorialTargetRegistry.unregister('scan.firstWagonRow');
+    TutorialTargetRegistry.unregister('scan.firstEditIcon');
+    TutorialTargetRegistry.unregister('scan.backButton');
+    TutorialTargetRegistry.unregisterAction('scan.openWagonDetailForDemo');
+
     // Okamžité zastavení zpracování
     _isDisposing = true;
     _isProcessing = true;
@@ -1103,6 +1124,14 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   void _showError(String message) => _showOverlay(message, Colors.red);
   void _showMessage(String message) => _showOverlay(message, Colors.green);
 
+  /// Otevře detail prvního (nejstaršího) naskenovaného vozu — používá
+  /// tutoriál pro ukázku editace vozu, nálepek, poznámek a technických
+  /// údajů na demo soupisu.
+  void _openFirstWagonDetail() {
+    if (_detectedNumbers.isEmpty) return;
+    _openWagonDetail(_detectedNumbers.first);
+  }
+
   Future<void> _openWagonDetail(String wagonNumber) async {
     if (_currentInventoryId == null) return;
 
@@ -1195,21 +1224,51 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('SKENOVÁNÍ VOZŮ'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _isDisposing ? null : () => _handleExit(),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(_isFlashOn ? Icons.flash_on : Icons.flash_off_outlined),
-            onPressed: _isDisposing ? null : _toggleFlash,
-            tooltip: _isFlashOn ? 'Vypnout blesk' : 'Zapnout blesk',
-          ),
-        ],
+    final fold = FoldInfo.of(context);
+    return fold.isUnfolded
+        ? _buildUnfoldedLayout(context)
+        : _buildPhoneLayout(context);
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      title: const Text('SKENOVÁNÍ VOZŮ'),
+      leading: IconButton(
+        key: _backButtonKey,
+        icon: const Icon(Icons.arrow_back),
+        onPressed: _isDisposing ? null : () => _handleExit(),
       ),
+      actions: [
+        IconButton(
+          icon: Icon(_isFlashOn ? Icons.flash_on : Icons.flash_off_outlined),
+          onPressed: _isDisposing ? null : _toggleFlash,
+          tooltip: _isFlashOn ? 'Vypnout blesk' : 'Zapnout blesk',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDisposingOverlay() {
+    if (!_isDisposing) return const SizedBox.shrink();
+    return Container(
+      color: Colors.black45,
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text('Ukončuji skenování...',
+                style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
+    return Scaffold(
+      appBar: _buildAppBar(),
       body: Stack(
         children: [
           Column(
@@ -1232,245 +1291,297 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                         child: CameraPreview(_cameraController!),
                       ),
                     ),
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Zaměřte na číslo vozu a stiskněte tlačítko',
-                          style: TextStyle(color: Colors.white, fontSize: 13),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                    if (_statusMessage != null)
-                      Positioned(
-                        bottom: 8,
-                        left: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _statusColor.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            _statusMessage!,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
+                    _buildCameraHint(),
+                    if (_statusMessage != null) _buildStatusBanner(),
                   ],
                 ),
               ),
-              // Seznam skenovaných vozů
-              Expanded(
-                child: Container(
-                  color: ThemeService.kRailBlack,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              Expanded(child: _buildWagonListPane(context)),
+              _buildCaptureButton(),
+            ],
+          ),
+          _buildDisposingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  /// Na rozevřeném foldu jsou kamera a seznam naskenovaných vozů vedle
+  /// sebe místo pod sebou – kamera dostane víc místa, seznam zůstává
+  /// úzký pruh podobně jako u ostatních obrazovek.
+  Widget _buildUnfoldedLayout(BuildContext context) {
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: Stack(
+        children: [
+          FoldTwoPane(
+            primary: _buildWagonListPane(context),
+            secondary: _buildCameraPreviewPane(context),
+          ),
+          _buildDisposingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraHint() {
+    return Positioned(
+      top: 8,
+      left: 8,
+      right: 8,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'Zaměřte na číslo vozu a stiskněte tlačítko',
+          style: TextStyle(color: Colors.white, fontSize: 13),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner() {
+    return Positioned(
+      bottom: 8,
+      left: 8,
+      right: 8,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _statusColor.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          _statusMessage!,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+
+  /// Kamera + tlačítko SKENOVAT jako samostatný panel pro rozevřený fold.
+  /// Na rozdíl od telefonní verze se náhled kamery neřídí velikostí celé
+  /// obrazovky (`MediaQuery`), ale velikostí vlastního panelu
+  /// (`LayoutBuilder`), ať nepřeteče do sousedního seznamu.
+  Widget _buildCameraPreviewPane(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Panel je na foldu užší a mnohem vyšší než telefonní 50%
+              // výšky obrazovky, takže prostý "šířka × poměr stran" (jako
+              // na telefonu) by náhled zmenšil na střed a nechal kolem něj
+              // mezery. Místo toho dopočítáme klasické "cover" – zvětšíme
+              // náhled tak, aby vždy zaplnil celý panel v obou rozměrech,
+              // a přebytek ořízneme.
+              final aspectRatio = _cameraController!.value.aspectRatio;
+              final coverByWidth = constraints.maxWidth * aspectRatio;
+              final fillsHeight = coverByWidth >= constraints.maxHeight;
+              final previewWidth = fillsHeight
+                  ? constraints.maxWidth
+                  : constraints.maxHeight / aspectRatio;
+              final previewHeight =
+                  fillsHeight ? coverByWidth : constraints.maxHeight;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(color: Colors.black),
+                  ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.center,
+                      maxWidth: previewWidth,
+                      maxHeight: previewHeight,
+                      child: CameraPreview(_cameraController!),
+                    ),
+                  ),
+                  _buildCameraHint(),
+                  if (_statusMessage != null) _buildStatusBanner(),
+                ],
+              );
+            },
+          ),
+        ),
+        _buildCaptureButton(),
+      ],
+    );
+  }
+
+  /// Seznam naskenovaných vozů. Beze změny se používá jak pod kamerou na
+  /// telefonu, tak jako samostatný panel na rozevřeném foldu.
+  Widget _buildWagonListPane(BuildContext context) {
+    return Container(
+      color: ThemeService.kRailBlack,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 16,
+                  color: ThemeService.kRailAmber,
+                  margin: const EdgeInsets.only(right: 8),
+                ),
+                Text(
+                  'VOZY V SOUPISU ($_totalWagonCount)  ·  RELACE: ${_detectedNumbers.length}',
+                  style: TextStyle(
+                    color: ThemeService.kRailAmber,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(
+              color: ThemeService.kRailAmber.withValues(alpha: 0.3), height: 1),
+          Expanded(
+            child: _detectedNumbers.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Zatím žádné vozy',
+                      style: TextStyle(color: Colors.white54, fontSize: 14),
+                    ),
+                  )
+                : ListView.builder(
+                    reverse: true,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: _detectedNumbers.length,
+                    itemBuilder: (context, index) {
+                      final actualIndex = _detectedNumbers.length - 1 - index;
+                      final number = _detectedNumbers[actualIndex];
+                      final isValid = UicValidator.validateUicNumber(number);
+                      final isComplete = _wagonComplete[number] ?? false;
+                      final hasDefect = _wagonHasDefect[number] ?? false;
+                      return Padding(
+                        key: actualIndex == 0 ? _firstWagonRowKey : null,
+                        padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
                           children: [
-                            Container(
-                              width: 3,
-                              height: 16,
-                              color: ThemeService.kRailAmber,
-                              margin: const EdgeInsets.only(right: 8),
+                            Icon(
+                              isValid ? Icons.check_circle : Icons.error,
+                              color: isValid ? Colors.green : Colors.red,
+                              size: 18,
                             ),
-                            Text(
-                              'VOZY V SOUPISU ($_totalWagonCount)  ·  RELACE: ${_detectedNumbers.length}',
-                              style: TextStyle(
-                                color: ThemeService.kRailAmber,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                                letterSpacing: 0.6,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                UicValidator.formatUicNumber(number),
+                                style: TextStyle(
+                                  color: isValid ? Colors.white : Colors.red,
+                                  fontSize: 15,
+                                ),
                               ),
+                            ),
+                            Tooltip(
+                              message: isComplete
+                                  ? 'Databáze: technické údaje kompletní'
+                                  : 'Databáze: technické údaje neúplné',
+                              child: Icon(
+                                isComplete
+                                    ? Icons.circle
+                                    : Icons.circle_outlined,
+                                size: 8,
+                                color: isComplete
+                                    ? Colors.greenAccent.withValues(alpha: 0.8)
+                                    : Colors.white24,
+                              ),
+                            ),
+                            if (hasDefect) ...[
+                              const Tooltip(
+                                message:
+                                    'Databáze: vůz veden se závadou (příznak/poznámka)',
+                                child: Icon(
+                                  Icons.warning_amber_rounded,
+                                  size: 18,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            const SizedBox(width: 10),
+                            IconButton(
+                              key: actualIndex == 0 ? _firstEditIconKey : null,
+                              icon: const Icon(
+                                Icons.edit_outlined,
+                                color: ThemeService.kRailAmber,
+                                size: 18,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              onPressed: () => _openWagonDetail(number),
+                              tooltip: 'Přidat poznámky a příznaky',
                             ),
                           ],
                         ),
-                      ),
-                      Divider(
-                          color: ThemeService.kRailAmber.withValues(alpha: 0.3),
-                          height: 1),
-                      Expanded(
-                        child: _detectedNumbers.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  'Zatím žádné vozy',
-                                  style: TextStyle(
-                                      color: Colors.white54, fontSize: 14),
-                                ),
-                              )
-                            : ListView.builder(
-                                reverse: true,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                itemCount: _detectedNumbers.length,
-                                itemBuilder: (context, index) {
-                                  final actualIndex =
-                                      _detectedNumbers.length - 1 - index;
-                                  final number = _detectedNumbers[actualIndex];
-                                  final isValid =
-                                      UicValidator.validateUicNumber(number);
-                                  final isComplete =
-                                      _wagonComplete[number] ?? false;
-                                  final hasDefect =
-                                      _wagonHasDefect[number] ?? false;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          isValid
-                                              ? Icons.check_circle
-                                              : Icons.error,
-                                          color: isValid
-                                              ? Colors.green
-                                              : Colors.red,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            UicValidator.formatUicNumber(
-                                                number),
-                                            style: TextStyle(
-                                              color: isValid
-                                                  ? Colors.white
-                                                  : Colors.red,
-                                              fontSize: 15,
-                                            ),
-                                          ),
-                                        ),
-                                        Tooltip(
-                                          message: isComplete
-                                              ? 'Databáze: technické údaje kompletní'
-                                              : 'Databáze: technické údaje neúplné',
-                                          child: Icon(
-                                            isComplete
-                                                ? Icons.circle
-                                                : Icons.circle_outlined,
-                                            size: 8,
-                                            color: isComplete
-                                                ? Colors.greenAccent
-                                                    .withValues(alpha: 0.8)
-                                                : Colors.white24,
-                                          ),
-                                        ),
-                                        if (hasDefect) ...[
-                                          const Tooltip(
-                                            message:
-                                                'Databáze: vůz veden se závadou (příznak/poznámka)',
-                                            child: Icon(
-                                              Icons.warning_amber_rounded,
-                                              size: 18,
-                                              color: Colors.orange,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                        ],
-                                        const SizedBox(width: 10),
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.edit_outlined,
-                                            color: ThemeService.kRailAmber,
-                                            size: 18,
-                                          ),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 32,
-                                            minHeight: 32,
-                                          ),
-                                          onPressed: () =>
-                                              _openWagonDetail(number),
-                                          tooltip: 'Přidat poznámky a příznaky',
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                ),
-              ),
-              // Tlačítko skenovat
-              // SafeArea zajistí, že tlačítko nezmizí pod systémovou
-              // navigační lištou (relevantní hlavně u klasické tlačítkové
-              // navigace, ne u gest).
-              SafeArea(
-                top: false,
-                child: Container(
-                  color: ThemeService.kRailBlack,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: (_isProcessing || _isDisposing)
-                          ? null
-                          : _captureAndAnalyze,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: ThemeService.kRailAmber,
-                        foregroundColor: ThemeService.kRailBlack,
-                        disabledBackgroundColor:
-                            ThemeService.kRailAmber.withValues(alpha: 0.4),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      icon: _isProcessing
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                  color: ThemeService.kRailBlack,
-                                  strokeWidth: 2))
-                          : const Icon(Icons.document_scanner_outlined),
-                      label: Text(
-                        _isProcessing ? 'ZPRACOVÁVÁM...' : 'SKENOVAT',
-                        style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
-          // Indikátor zavírání (přes celou obrazovku)
-          if (_isDisposing)
-            Container(
-              color: Colors.black45,
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 16),
-                    Text('Ukončuji skenování...',
-                        style: TextStyle(color: Colors.white)),
-                  ],
+        ],
+      ),
+    );
+  }
+
+  // Tlačítko skenovat. SafeArea zajistí, že tlačítko nezmizí pod
+  // systémovou navigační lištou (relevantní hlavně u klasické tlačítkové
+  // navigace, ne u gest).
+  Widget _buildCaptureButton() {
+    // Barva musí být na Containeru OKOLO SafeArea, ne uvnitř – jinak SafeArea
+    // vyhradí místo pro spodní systémovou (gesto) lištu, které zůstane
+    // nevybarvené a prosvítá přes něj pozadí Scaffoldu (tenký světlý pruh
+    // pod tlačítkem).
+    return Container(
+      color: ThemeService.kRailBlack,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              key: _captureButtonKey,
+              onPressed:
+                  (_isProcessing || _isDisposing) ? null : _captureAndAnalyze,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ThemeService.kRailAmber,
+                foregroundColor: ThemeService.kRailBlack,
+                disabledBackgroundColor:
+                    ThemeService.kRailAmber.withValues(alpha: 0.4),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
                 ),
+              ),
+              icon: _isProcessing
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          color: ThemeService.kRailBlack, strokeWidth: 2))
+                  : const Icon(Icons.document_scanner_outlined),
+              label: Text(
+                _isProcessing ? 'ZPRACOVÁVÁM...' : 'SKENOVAT',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -1604,8 +1715,8 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
                       nav.pop();
                       _showEditResult(newFormatted, isValid);
 
-                      final parsedNotes = WagonNumber.parseNotes(
-                          wagonData['notes'] as String?);
+                      final parsedNotes =
+                          WagonNumber.parseNotes(wagonData['notes'] as String?);
                       final hasDefect = parsedNotes.flags.isNotEmpty ||
                           parsedNotes.text.trim().isNotEmpty;
 

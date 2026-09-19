@@ -8,7 +8,9 @@ import '../models/inventory.dart';
 import '../models/wagon_registry_entry.dart';
 import '../services/decimal_input.dart';
 import '../services/theme_service.dart';
+import '../services/tutorial_target_registry.dart';
 import '../services/wagon_registry_service.dart';
+import '../widgets/adaptive/fold_info.dart';
 
 /// Prohledávatelný seznam trvalého registru vozů – dostupný z Nastavení.
 /// Umožňuje ruční úpravu/smazání jednotlivých záznamů a export/import
@@ -27,10 +29,24 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
   bool _isBusy = false;
   String _searchQuery = '';
 
+  final _exportButtonKey = GlobalKey();
+  final _importButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _loadEntries();
+    TutorialTargetRegistry.register(
+        'wagonDatabase.exportButton', _exportButtonKey);
+    TutorialTargetRegistry.register(
+        'wagonDatabase.importButton', _importButtonKey);
+  }
+
+  @override
+  void dispose() {
+    TutorialTargetRegistry.unregister('wagonDatabase.exportButton');
+    TutorialTargetRegistry.unregister('wagonDatabase.importButton');
+    super.dispose();
   }
 
   Future<void> _loadEntries() async {
@@ -445,130 +461,157 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final fold = FoldInfo.of(context);
+    return fold.isUnfolded
+        ? _buildUnfoldedLayout(context)
+        : _buildPhoneLayout(context);
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('DATABÁZE VOZŮ'),
-        actions: [
-          IconButton(
-            onPressed: _isBusy ? null : _exportDatabase,
-            icon: const Icon(Icons.upload_file_outlined),
-            tooltip: 'Exportovat databázi (.xlsx)',
-          ),
-          IconButton(
-            onPressed: _isBusy ? null : _importDatabase,
-            icon: const Icon(Icons.download_outlined),
-            tooltip: 'Importovat databázi (.xlsx)',
-          ),
-        ],
+      appBar: _buildAppBar(),
+      body: _buildBody(context),
+    );
+  }
+
+  /// Na rozevřeném foldu se seznam nenatáhne přes celou širokou obrazovku
+  /// (byl by pak jen úzký pruh textu uprostřed) – obsah zůstává omezený na
+  /// čitelnou šířku a vystředěný, stejně jako u Kontaktů.
+  Widget _buildUnfoldedLayout(BuildContext context) {
+    return Scaffold(
+      appBar: _buildAppBar(),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: _buildBody(context),
+        ),
       ),
-      body: Column(
-        children: [
-          ThemeService.amberStripe,
-          if (_isBusy) const LinearProgressIndicator(minHeight: 2),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Hledat podle čísla vozu nebo poznámky...',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
+    );
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      title: const Text('DATABÁZE VOZŮ'),
+      actions: [
+        IconButton(
+          key: _exportButtonKey,
+          onPressed: _isBusy ? null : _exportDatabase,
+          icon: const Icon(Icons.upload_file_outlined),
+          tooltip: 'Exportovat databázi (.xlsx)',
+        ),
+        IconButton(
+          key: _importButtonKey,
+          onPressed: _isBusy ? null : _importDatabase,
+          icon: const Icon(Icons.download_outlined),
+          tooltip: 'Importovat databázi (.xlsx)',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Column(
+      children: [
+        ThemeService.amberStripe,
+        if (_isBusy) const LinearProgressIndicator(minHeight: 2),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            onChanged: _onSearchChanged,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Hledat podle čísla vozu nebo poznámky...',
+              border: OutlineInputBorder(),
+              isDense: true,
             ),
           ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _allEntries.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.storage_outlined,
-                                size: 80, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text('Databáze je zatím prázdná',
-                                style: TextStyle(
-                                    fontSize: 18, color: Colors.grey[600])),
-                          ],
-                        ),
-                      )
-                    : _filteredEntries.isEmpty
-                        ? Center(
-                            child: Text('Žádný vůz neodpovídá hledání',
-                                style: TextStyle(color: Colors.grey[600])),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 4),
-                            itemCount: _filteredEntries.length,
-                            itemBuilder: (context, index) {
-                              final entry = _filteredEntries[index];
-                              final parsed =
-                                  WagonNumber.parseNotes(entry.notes);
-                              return Card(
-                                margin: const EdgeInsets.symmetric(
-                                    vertical: 4),
-                                child: ListTile(
-                                  leading: Icon(
-                                    parsed.flags.isNotEmpty
-                                        ? Icons.flag
-                                        : entry.hasInfo
-                                            ? Icons.info_outline
-                                            : Icons.train_outlined,
-                                    color: parsed.flags.isNotEmpty
-                                        ? ThemeService.kRailAmber
-                                        : Colors.grey,
-                                  ),
-                                  title: Text(entry.formattedNumber),
-                                  subtitle: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (entry.notes.isNotEmpty)
-                                        Text(entry.notes),
-                                      if (_technicalSummary(entry).isNotEmpty)
-                                        Text(
-                                          _technicalSummary(entry),
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey),
-                                        ),
-                                      if (!entry.hasInfo)
-                                        Text(
-                                          'Bez informací',
-                                          style: TextStyle(
-                                              fontSize: 12,
-                                              fontStyle: FontStyle.italic,
-                                              color: Colors.grey[500]),
-                                        ),
-                                    ],
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
+        ),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _allEntries.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.storage_outlined,
+                              size: 80, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text('Databáze je zatím prázdná',
+                              style: TextStyle(
+                                  fontSize: 18, color: Colors.grey[600])),
+                        ],
+                      ),
+                    )
+                  : _filteredEntries.isEmpty
+                      ? Center(
+                          child: Text('Žádný vůz neodpovídá hledání',
+                              style: TextStyle(color: Colors.grey[600])),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                          itemCount: _filteredEntries.length,
+                          itemBuilder: (context, index) {
+                            final entry = _filteredEntries[index];
+                            final parsed = WagonNumber.parseNotes(entry.notes);
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              child: ListTile(
+                                leading: Icon(
+                                  parsed.flags.isNotEmpty
+                                      ? Icons.flag
+                                      : entry.hasInfo
+                                          ? Icons.info_outline
+                                          : Icons.train_outlined,
+                                  color: parsed.flags.isNotEmpty
+                                      ? ThemeService.kRailAmber
+                                      : Colors.grey,
+                                ),
+                                title: Text(entry.formattedNumber),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (entry.notes.isNotEmpty)
+                                      Text(entry.notes),
+                                    if (_technicalSummary(entry).isNotEmpty)
                                       Text(
-                                        DateFormat.yMd()
-                                            .format(entry.updatedAt),
+                                        _technicalSummary(entry),
                                         style: const TextStyle(
                                             fontSize: 12, color: Colors.grey),
                                       ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete,
-                                            color: Colors.red),
-                                        onPressed: () => _deleteEntry(entry),
+                                    if (!entry.hasInfo)
+                                      Text(
+                                        'Bez informací',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            fontStyle: FontStyle.italic,
+                                            color: Colors.grey[500]),
                                       ),
-                                    ],
-                                  ),
-                                  onTap: () => _editEntry(entry),
+                                  ],
                                 ),
-                              );
-                            },
-                          ),
-          ),
-        ],
-      ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      DateFormat.yMd().format(entry.updatedAt),
+                                      style: const TextStyle(
+                                          fontSize: 12, color: Colors.grey),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete,
+                                          color: Colors.red),
+                                      onPressed: () => _deleteEntry(entry),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () => _editEntry(entry),
+                              ),
+                            );
+                          },
+                        ),
+        ),
+      ],
     );
   }
 }
