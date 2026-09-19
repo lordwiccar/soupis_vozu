@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0+7 (2026-09-19)
+## 1.1.0+8 (2026-09-19)
 - Přidán výpočet MZOB (Mezinárodní zpráva o brzdění vlaku) přímo ze soupisu
   vozů – appka spočítá hmotnost, brzdící váhu, délku, počet náprav a další
   hodnoty potřebné pro sepsání zprávy, včetně dotazu na přestavovače brzdy
