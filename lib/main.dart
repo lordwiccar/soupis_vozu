@@ -9,7 +9,9 @@ import 'services/theme_service.dart';
 import 'services/tutorial_service.dart';
 import 'services/tutorial_controller.dart';
 import 'services/permissions_service.dart';
+import 'services/changelog_service.dart';
 import 'widgets/spotlight_overlay.dart';
+import 'widgets/changelog_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +72,17 @@ class _SoupisVozuAppState extends State<SoupisVozuApp> {
     // Tutorial — zobrazíme při úplně prvním spuštění
     if (await TutorialService.shouldShow()) {
       await _tutorialController.start();
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Changelog — po aktualizaci appky (ne při úplně první instalaci, tu už
+    // pokrývá tutoriál výše) zobrazíme při prvním spuštění přehled novinek.
+    if (await ChangelogService.wasUpdated()) {
+      if (!mounted) return;
+      await showChangelogDialog(_navigatorKey.currentContext!);
+      await ChangelogService.markCurrentVersionSeen();
     }
   }
 

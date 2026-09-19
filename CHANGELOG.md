@@ -17,6 +17,8 @@
   změny.
 - Oprava: na obrazovce skenování zůstával pod tlačítkem SKENOVAT tenký
   nevybarvený pruh v prostoru vyhrazeném pro systémovou gesto lištu.
+- Po instalaci aktualizace appky se teď při prvním spuštění automaticky
+  zobrazí dialog s přehledem novinek dané verze.
 
 ## 1.0.5+6 (2026-08-15)
 - Oprava: při ručním zadání čísla vozu (nebo opravě nerozpoznaného/neplatného
