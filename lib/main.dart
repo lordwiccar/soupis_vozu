@@ -3,13 +3,13 @@ import 'package:flutter/services.dart';
 import 'screens/home_screen_full.dart';
 import 'screens/scan_screen_fixed.dart';
 import 'screens/inventory_list_screen.dart';
-import 'services/inventory_service.dart';
 import 'screens/settings_screen.dart';
 import 'screens/contacts_screen.dart';
 import 'services/theme_service.dart';
 import 'services/tutorial_service.dart';
+import 'services/tutorial_controller.dart';
 import 'services/permissions_service.dart';
-import 'widgets/tutorial_overlay.dart';
+import 'widgets/spotlight_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,22 +29,26 @@ class SoupisVozuApp extends StatefulWidget {
 
 class _SoupisVozuAppState extends State<SoupisVozuApp> {
   ThemeMode _themeMode = ThemeMode.light;
-  bool _tutorialActive = false;
-  int _tutorialStep = 0;
-  String? _demoInventoryId;
   final _navigatorKey = GlobalKey<NavigatorState>();
-
-  // Indexy kroků, které mají konkrétní navigaci
-  static const _stepSettings  = 2; // přejít do nastavení
-  static const _stepScan      = 5; // přejít na scan screen
-  static const _stepInventory = 8; // přejít do seznamu soupisů
+  late final TutorialController _tutorialController;
 
   @override
   void initState() {
     super.initState();
+    _tutorialController = TutorialController(_navigatorKey)
+      ..addListener(_onTutorialChanged);
     _loadThemeMode();
     _handleFirstLaunch();
   }
+
+  @override
+  void dispose() {
+    _tutorialController.removeListener(_onTutorialChanged);
+    _tutorialController.dispose();
+    super.dispose();
+  }
+
+  void _onTutorialChanged() => setState(() {});
 
   Future<void> _loadThemeMode() async {
     final themeMode = await ThemeService.getThemeMode();
@@ -65,74 +69,7 @@ class _SoupisVozuAppState extends State<SoupisVozuApp> {
 
     // Tutorial — zobrazíme při úplně prvním spuštění
     if (await TutorialService.shouldShow()) {
-      _demoInventoryId = await TutorialService.createDemoInventory();
-      if (mounted) setState(() => _tutorialActive = true);
-    }
-  }
-
-  Future<void> _advanceTutorial() async {
-    final nextStep = _tutorialStep + 1;
-
-    if (nextStep >= kTutorialSteps.length) {
-      await _finishTutorial();
-      return;
-    }
-
-    // Navigace na správnou obrazovku před zobrazením kroku
-    switch (nextStep) {
-      case _stepSettings:
-        _navigatorKey.currentState
-            ?.pushNamedAndRemoveUntil('/settings', (_) => false);
-        break;
-      case _stepScan:
-        List<String> numbers = [];
-        if (_demoInventoryId != null) {
-          final wagons = await InventoryService.getWagonNumbersForInventory(
-              _demoInventoryId!);
-          numbers = wagons.map((w) => w.number).toList();
-        }
-        _navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => ScanScreenFixed(
-              inventoryId: _demoInventoryId,
-              initialWagonNumbers: numbers,
-            ),
-          ),
-          (_) => false,
-        );
-        break;
-      case _stepInventory:
-        _navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) => InventoryListScreen(
-              expandedInventoryId: _demoInventoryId,
-            ),
-          ),
-          (_) => false,
-        );
-        break;
-    }
-
-    setState(() => _tutorialStep = nextStep);
-  }
-
-  Future<void> _finishTutorial() async {
-    await TutorialService.markComplete();
-
-    // Smazat demo soupis
-    if (_demoInventoryId != null) {
-      await TutorialService.deleteDemoInventory(_demoInventoryId!);
-      _demoInventoryId = null;
-    }
-
-    _navigatorKey.currentState
-        ?.pushNamedAndRemoveUntil('/', (_) => false);
-
-    if (mounted) {
-      setState(() {
-        _tutorialActive = false;
-        _tutorialStep = 0;
-      });
+      await _tutorialController.start();
     }
   }
 
@@ -160,20 +97,17 @@ class _SoupisVozuAppState extends State<SoupisVozuApp> {
         '/settings': (context) => SettingsScreen(
               onThemeChanged: updateThemeMode,
               currentTheme: _themeMode,
+              onReplayTutorial: _tutorialController.start,
             ),
         '/contacts': (context) => const ContactsScreen(),
       },
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
-        if (!_tutorialActive) return child!;
+        if (!_tutorialController.active) return child!;
         return Stack(
           children: [
             child!,
-            TutorialOverlay(
-              step: _tutorialStep,
-              onNext: _advanceTutorial,
-              onSkip: _finishTutorial,
-            ),
+            SpotlightOverlay(controller: _tutorialController),
           ],
         );
       },

@@ -11,9 +11,13 @@ import '../services/contact_service.dart';
 import '../services/uic_validator.dart';
 import '../services/decimal_input.dart';
 import '../models/contact.dart';
+import '../services/mzob_service.dart';
+import '../services/tutorial_target_registry.dart';
 import 'wagon_detail_screen.dart';
 import 'scan_screen_fixed.dart';
 import '../services/theme_service.dart';
+import '../widgets/adaptive/fold_info.dart';
+import '../widgets/adaptive/fold_two_pane.dart';
 
 class InventoryListScreen extends StatefulWidget {
   final String? expandedInventoryId;
@@ -33,6 +37,16 @@ class _InventoryListScreenState extends State<InventoryListScreen>
   final Map<String, bool> _expandedState =
       {}; // Pamatování rozbalených ExpansionTile
 
+  // Výběr vozu pro master-detail panel na rozevřeném foldu – mimo fold
+  // layout se nikdy nepoužije.
+  Inventory? _selectedInventory;
+  WagonNumber? _selectedWagon;
+
+  final _demoTileKey = GlobalKey();
+  final _exportEmailButtonKey = GlobalKey();
+  final _sendEmailButtonKey = GlobalKey();
+  final _mzobButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -41,13 +55,39 @@ class _InventoryListScreenState extends State<InventoryListScreen>
       _expandedState[widget.expandedInventoryId!] = true;
     }
     _loadInventories();
+
+    TutorialTargetRegistry.register('inventory.demoTile', _demoTileKey);
+    TutorialTargetRegistry.register(
+        'inventory.exportEmailButton', _exportEmailButtonKey);
+    TutorialTargetRegistry.register(
+        'inventory.sendEmailButton', _sendEmailButtonKey);
+    TutorialTargetRegistry.register('inventory.mzobButton', _mzobButtonKey);
+    TutorialTargetRegistry.registerAction(
+        'inventory.openEmailDialogForDemo', _openDemoEmailDialog);
+    TutorialTargetRegistry.registerAction(
+        'inventory.reloadForTutorial', _loadInventories);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel(); // Uklidíme timer
+    TutorialTargetRegistry.unregister('inventory.demoTile');
+    TutorialTargetRegistry.unregister('inventory.exportEmailButton');
+    TutorialTargetRegistry.unregister('inventory.sendEmailButton');
+    TutorialTargetRegistry.unregister('inventory.mzobButton');
+    TutorialTargetRegistry.unregisterAction('inventory.openEmailDialogForDemo');
+    TutorialTargetRegistry.unregisterAction('inventory.reloadForTutorial');
     super.dispose();
+  }
+
+  void _openDemoEmailDialog() {
+    final demoId = widget.expandedInventoryId;
+    if (demoId == null) return;
+    final demo = _inventories.where((inv) => inv.id == demoId).firstOrNull;
+    if (demo != null) {
+      _exportInventoryToEmail(demo, demoMode: true);
+    }
   }
 
   @override
@@ -79,6 +119,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
         _inventories = inventories;
         _isLoadingData = false;
         _isReloading = false;
+        _reconcileSelection();
       });
     } catch (e) {
       setState(() {
@@ -93,6 +134,69 @@ class _InventoryListScreenState extends State<InventoryListScreen>
           ),
         );
       }
+    }
+  }
+
+  /// Po znovunačtení dat ověří, že vybraný soupis/vůz (pravý panel na
+  /// rozevřeném foldu) v datech ještě existuje – jinak výběr zruší, ať
+  /// panel nezobrazuje zastaralá/smazaná data. Musí se volat uvnitř
+  /// `setState`.
+  void _reconcileSelection() {
+    if (_selectedInventory == null || _selectedWagon == null) return;
+
+    final inventory = _inventories
+        .where((inv) => inv.id == _selectedInventory!.id)
+        .firstOrNull;
+    final wagon = inventory?.wagonNumbers
+        .where((w) => w.number == _selectedWagon!.number)
+        .firstOrNull;
+
+    if (inventory == null || wagon == null) {
+      _selectedInventory = null;
+      _selectedWagon = null;
+    } else {
+      _selectedInventory = inventory;
+      _selectedWagon = wagon;
+    }
+  }
+
+  /// Tap na řádek vozu v seznamu. Na telefonu vždy otevře celou obrazovku
+  /// detailu (`inlineDetail == false`); na rozevřeném foldu jen nastaví
+  /// výběr, který se zobrazí v pravém panelu (`inlineDetail == true`).
+  Future<void> _handleWagonTap(
+    Inventory inventory,
+    WagonNumber wagon, {
+    required bool inlineDetail,
+  }) async {
+    if (!wagon.isValid) {
+      final editedNumber = await _showEditWagonDialog(wagon);
+      if (editedNumber != null) {
+        await InventoryService.updateWagonNumber(
+          inventory.id,
+          wagon.copyWith(formattedNumber: editedNumber, isValid: true),
+        );
+        _loadInventories();
+      }
+      return;
+    }
+
+    if (inlineDetail) {
+      setState(() {
+        _selectedInventory = inventory;
+        _selectedWagon = wagon;
+      });
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => WagonDetailScreen(
+            inventoryId: inventory.id,
+            wagon: wagon,
+            wagonIndex: wagon.order - 1,
+            onUpdate: (f, n, s) => _loadInventories(),
+          ),
+        ),
+      );
     }
   }
 
@@ -318,7 +422,185 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     );
   }
 
-  Future<void> _exportInventoryToEmail(Inventory inventory) async {
+  // ─── VÝPOČET MZOB ────────────────────────────────────────────────────
+
+  Future<void> _showMzobFlow(Inventory inventory) async {
+    final wagons = inventory.wagonNumbers;
+
+    final cargoMass = await _showMzobMassDialog();
+    if (cargoMass == null) return;
+
+    int? gSwitchCount;
+    if (cargoMass > 0) {
+      final gross = sumWagonWeight(wagons) + cargoMass;
+      if (gross >= 1200) {
+        gSwitchCount = await _showGSwitchDialog();
+        if (gSwitchCount == null) return;
+      }
+    }
+
+    final result = calculateMzob(
+      wagons: wagons,
+      cargoMass: cargoMass,
+      gSwitchCount: gSwitchCount,
+    );
+
+    if (!mounted) return;
+    await _showMzobResultDialog(inventory, result);
+  }
+
+  Future<double?> _showMzobMassDialog() async {
+    final controller = TextEditingController(text: '0');
+    String? errorText;
+
+    return showDialog<double>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Spočítat MZOB'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tato funkce funguje pouze v případě, že je ložený celý '
+                'vlak, nikoli jen některé vozy v něm.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'V následujících hodnotách značí (P) brzdící váhu '
+                'prázdného vozu a (L) brzdící váhu loženého vozu.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [DecimalInputFormatter()],
+                decoration: InputDecoration(
+                  labelText: 'Hmotnost nákladu',
+                  suffixText: 't',
+                  border: const OutlineInputBorder(),
+                  errorText: errorText,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušit'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = parseDecimal(controller.text);
+                if (value == null || value < 0) {
+                  setDialogState(() {
+                    errorText = 'Zadejte hmotnost 0 nebo vyšší';
+                  });
+                  return;
+                }
+                Navigator.pop(context, value);
+              },
+              child: const Text('Spočítat'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<int?> _showGSwitchDialog() async {
+    return showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Počet přestavovačů v režimu G'),
+        content: const Text(
+          'Součet hmotnosti nákladu a vozů dosáhl 1200 t nebo více. '
+          'Kolik přestavovačů je nastaveno do režimu G?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 3),
+            child: const Text('3'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 5),
+            child: const Text('5'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _buildMzobText(Inventory inventory, MzobResult result) {
+    final buffer = StringBuffer()
+      ..writeln('MZOB – ${inventory.name}')
+      ..writeln('Počet vozů v soupravě: ${result.wagonCount}')
+      ..writeln('Hmotnost: ${formatDecimal(result.weight)} t')
+      ..writeln('Brzdící váha: ${formatDecimal(result.brakeWeight)} t')
+      ..writeln('Délka soupravy: ${result.lengthMeters} m')
+      ..writeln('Počet náprav: ${result.axleCount}')
+      ..writeln(
+          'Zajišťovací síla: ${formatDecimal(result.handbrakeForceKn)} kN')
+      ..writeln('Vozy s nekovovými špalíky: ${result.nonMetallicBlocksCount}')
+      ..writeln('Vozy v režimu G: ${result.gModeCount}')
+      ..writeln('Vozy v režimu P: ${result.pModeCount}')
+      ..writeln('Ruční brzdy v soupravě: ${result.handbrakeCount}');
+    if (result.note != null) {
+      buffer.writeln('Poznámka: ${result.note}');
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _showMzobResultDialog(
+      Inventory inventory, MzobResult result) async {
+    final text = _buildMzobText(inventory, result);
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Výpis pro MZOB'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Text(text,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Výpis zkopírován do schránky'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            child: const Text('Kopírovat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportInventoryToEmail(Inventory inventory,
+      {bool demoMode = false}) async {
     // Použijeme jméno soupisu z databáze, bez dalšího dialogu
     final customName = inventory.name;
 
@@ -331,13 +613,15 @@ class _InventoryListScreenState extends State<InventoryListScreen>
           .map((contact) => contact.email.trim())
           .toList();
 
-      if (recipients.isEmpty &&
+      if (!demoMode &&
+          recipients.isEmpty &&
           !contacts.any((contact) => contact.isCopyRecipient)) {
         _showNoContactsDialog();
         return;
       }
 
-      await _showRecipientDialog(recipients, customName, table, contacts);
+      await _showRecipientDialog(recipients, customName, table, contacts,
+          demoMode: demoMode);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -365,7 +649,8 @@ class _InventoryListScreenState extends State<InventoryListScreen>
   }
 
   Future<void> _showRecipientDialog(List<String> recipients, String customName,
-      String table, List<Contact> contacts) async {
+      String table, List<Contact> contacts,
+      {bool demoMode = false}) async {
     // Při otevření dialogu žádný kontakt není předem vybrán
     final selectedRecipients = <String>[];
 
@@ -420,8 +705,20 @@ class _InventoryListScreenState extends State<InventoryListScreen>
               child: const Text('Zrušit'),
             ),
             ElevatedButton(
+              key: demoMode ? _sendEmailButtonKey : null,
               onPressed: () async {
                 Navigator.pop(context);
+                if (demoMode) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'V reálném použití by se nyní otevřel e-mail.'),
+                      ),
+                    );
+                  }
+                  return;
+                }
                 if (selectedRecipients.isNotEmpty) {
                   // Automaticky přidat kontakty označené jako "příjemci v Kopie"
                   final copyRecipients = contacts
@@ -551,145 +848,6 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     final validCount = inventory.wagonNumbers.where((w) => w.isValid).length;
     final totalCount = inventory.wagonNumbers.length;
     return 'Platných: $validCount/$totalCount';
-  }
-
-  // ─── SOUČTY TECHNICKÝCH ÚDAJŮ ZA SOUPIS ─────────────────────────────────
-  // Zobrazují se jen v appce na kartě soupisu, ne v exportované tabulce.
-
-  Widget _buildTechnicalTotals(Inventory inventory) {
-    double? totalWeight;
-    double? totalBrakeWeightG;
-    double? totalBrakeWeightP;
-    double? totalHandbrakeKn;
-    int handbrakeCount = 0;
-    double? totalLength;
-    int nonMetallicBlocksCount = 0;
-    // Rychlost celého vlaku se odvíjí od nejnižší rychlosti v soupravě.
-    double? minSpeedEmpty;
-    double? minSpeedLoaded;
-
-    for (final wagon in inventory.wagonNumbers) {
-      if (wagon.weight != null) {
-        totalWeight = (totalWeight ?? 0) + wagon.weight!;
-      }
-      if (wagon.brakeWeightG != null) {
-        totalBrakeWeightG = (totalBrakeWeightG ?? 0) + wagon.brakeWeightG!;
-      }
-      if (wagon.brakeWeightP != null) {
-        totalBrakeWeightP = (totalBrakeWeightP ?? 0) + wagon.brakeWeightP!;
-      }
-      if (wagon.handbrake) {
-        handbrakeCount++;
-        if (wagon.handbrakeForceKn != null) {
-          totalHandbrakeKn = (totalHandbrakeKn ?? 0) + wagon.handbrakeForceKn!;
-        }
-      }
-      if (wagon.length != null) {
-        totalLength = (totalLength ?? 0) + wagon.length!;
-      }
-      if (wagon.nonMetallicBlocks) {
-        nonMetallicBlocksCount++;
-      }
-      if (wagon.maxSpeedEmpty != null &&
-          (minSpeedEmpty == null || wagon.maxSpeedEmpty! < minSpeedEmpty)) {
-        minSpeedEmpty = wagon.maxSpeedEmpty;
-      }
-      if (wagon.maxSpeedLoaded != null &&
-          (minSpeedLoaded == null || wagon.maxSpeedLoaded! < minSpeedLoaded)) {
-        minSpeedLoaded = wagon.maxSpeedLoaded;
-      }
-    }
-
-    final chips = <Widget>[
-      if (totalWeight != null)
-        _buildTotalChip('Hmotnost', '${formatDecimal(totalWeight)} t'),
-      if (totalBrakeWeightG != null)
-        _buildTotalChip(
-            'Brzdící váha (P)', '${formatDecimal(totalBrakeWeightG)} t'),
-      if (totalBrakeWeightP != null)
-        _buildTotalChip(
-            'Brzdící váha (L)', '${formatDecimal(totalBrakeWeightP)} t'),
-      if (handbrakeCount > 0)
-        _buildTotalChip(
-          'Zajišťovací síla',
-          totalHandbrakeKn != null
-              ? '${totalHandbrakeKn.floor()} kN ($handbrakeCount×)'
-              : '$handbrakeCount×',
-        ),
-      if (minSpeedEmpty != null)
-        _buildTotalChip(
-            'Rychlost prázdný', '${formatDecimal(minSpeedEmpty)} km/h'),
-      if (minSpeedLoaded != null)
-        _buildTotalChip(
-            'Rychlost ložený', '${formatDecimal(minSpeedLoaded)} km/h'),
-      if (totalLength != null)
-        _buildTotalChip('Délka', '${formatDecimal(totalLength)} m'),
-      // Počet vozů s nekovovými špalíky se zobrazuje vždy, i když je nulový.
-      _buildTotalChip('Nekovové špalíky', '$nonMetallicBlocksCount×'),
-    ];
-
-    if (chips.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SizedBox(
-        width: double.infinity,
-        child: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: ThemeService.kRailAmber.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: ThemeService.kRailAmber.withValues(alpha: 0.4)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Součty za soupis:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              const SizedBox(height: 6),
-              Wrap(spacing: 8, runSpacing: 6, children: chips),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTotalChip(String label, String value) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor =
-        isDark ? ThemeService.kRailCream : ThemeService.kRailBlack;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-              decoration: TextDecoration.none,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              color: textColor,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _editInventoryName(
@@ -979,6 +1137,13 @@ class _InventoryListScreenState extends State<InventoryListScreen>
 
   @override
   Widget build(BuildContext context) {
+    final fold = FoldInfo.of(context);
+    return fold.isUnfolded
+        ? _buildUnfoldedLayout(context)
+        : _buildPhoneLayout(context);
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SOUPISY VOZŮ'),
@@ -992,364 +1157,7 @@ class _InventoryListScreenState extends State<InventoryListScreen>
       body: Column(children: [
         ThemeService.amberStripe,
         Expanded(
-          child: _isLoadingData
-              ? const Center(child: CircularProgressIndicator())
-              : _inventories.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inventory_2_outlined,
-                              size: 80, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text('Zatím žádné soupisy',
-                              style: TextStyle(
-                                  fontSize: 18, color: Colors.grey[600])),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: _inventories.length,
-                      itemBuilder: (context, index) {
-                        final inventory = _inventories[index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: ExpansionTile(
-                            initiallyExpanded:
-                                _expandedState[inventory.id] ?? false,
-                            onExpansionChanged: (expanded) {
-                              setState(() {
-                                _expandedState[inventory.id] = expanded;
-                              });
-                            },
-                            tilePadding: const EdgeInsets.only(
-                                left: 16, right: 8, top: 8, bottom: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            backgroundColor: Colors.transparent,
-                            collapsedBackgroundColor: Colors.transparent,
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Flexible(
-                                            child: Text(
-                                              inventory.name,
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          IconButton(
-                                            onPressed: () => _editInventoryName(
-                                                inventory.id, inventory.name),
-                                            icon: const Icon(
-                                                Icons.edit_outlined,
-                                                size: 16,
-                                                color: Color(0xFF4A90B8)),
-                                            tooltip: 'Upravit název soupisu',
-                                            padding: EdgeInsets.zero,
-                                            constraints: const BoxConstraints(
-                                              minWidth: 28,
-                                              minHeight: 28,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(_getInventorySummary(inventory)),
-                                      const SizedBox(height: 4),
-                                      Text(_formatDate(inventory.lastModified)),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      onPressed: () {
-                                        Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                                builder: (context) =>
-                                                    ScanScreenFixed(
-                                                        inventoryId:
-                                                            inventory.id)));
-                                      },
-                                      icon: const Icon(Icons.add_a_photo,
-                                          color: Colors.green),
-                                    ),
-                                    IconButton(
-                                      onPressed: () =>
-                                          _deleteInventory(inventory.id),
-                                      icon: const Icon(Icons.delete,
-                                          color: Colors.red),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            leading:
-                                const CircleAvatar(child: Icon(Icons.list_alt)),
-                            trailing: const SizedBox.shrink(),
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    _buildTechnicalTotals(inventory),
-                                    Text(
-                                        'Seznam čísel vozů (${inventory.wagonNumbers.length}):',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 8),
-                                    // Tlačítko pro otočení pořadí vozů
-                                    if (inventory.wagonNumbers.isNotEmpty)
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _rotateWagonOrder(inventory.id),
-                                          icon: const Icon(Icons.rotate_right,
-                                              size: 16),
-                                          label:
-                                              const Text('Otočit pořadí vozů'),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor:
-                                                const Color(0xFF4A90B8),
-                                            side: const BorderSide(
-                                                color: Color(0xFF4A90B8)),
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 8),
-                                          ),
-                                        ),
-                                      ),
-                                    const SizedBox(height: 12),
-                                    // Seznam vozů s možností přesouvání
-                                    if (inventory.wagonNumbers.isNotEmpty)
-                                      SizedBox(
-                                        height:
-                                            300, // Omezená výška pro lepší přehlednost
-                                        child: ReorderableListView.builder(
-                                          itemCount:
-                                              inventory.wagonNumbers.length,
-                                          onReorder: (oldIndex, newIndex) {
-                                            _reorderWagons(inventory.id,
-                                                oldIndex, newIndex);
-                                          },
-                                          itemBuilder: (context, index) {
-                                            final wagon =
-                                                inventory.wagonNumbers[index];
-                                            return Card(
-                                              key: ValueKey(wagon.number),
-                                              margin: const EdgeInsets.only(
-                                                  bottom: 4),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              color: _getFlagBackgroundColor(
-                                                  wagon.notes),
-                                              child: InkWell(
-                                                onTap: () async {
-                                                  if (!wagon.isValid) {
-                                                    final editedNumber =
-                                                        await _showEditWagonDialog(
-                                                            wagon);
-                                                    if (editedNumber != null) {
-                                                      await InventoryService
-                                                          .updateWagonNumber(
-                                                        inventory.id,
-                                                        wagon.copyWith(
-                                                          formattedNumber:
-                                                              editedNumber,
-                                                          isValid: true,
-                                                        ),
-                                                      );
-                                                      _loadInventories();
-                                                    }
-                                                  } else {
-                                                    await Navigator.push(
-                                                        context,
-                                                        MaterialPageRoute(
-                                                            builder: (context) =>
-                                                                WagonDetailScreen(
-                                                                    inventoryId:
-                                                                        inventory
-                                                                            .id,
-                                                                    wagon:
-                                                                        wagon,
-                                                                    wagonIndex:
-                                                                        wagon.order -
-                                                                            1,
-                                                                    onUpdate: (f,
-                                                                            n,
-                                                                            s) =>
-                                                                        _loadInventories())));
-                                                  }
-                                                },
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                child: Padding(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 8),
-                                                  child: Row(
-                                                    children: [
-                                                      ReorderableDragStartListener(
-                                                        index: index,
-                                                        child: Container(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(6),
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .surfaceContainerHighest,
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        6),
-                                                            border: Border.all(
-                                                                color:
-                                                                    Colors.grey[
-                                                                        300]!),
-                                                          ),
-                                                          child: Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            children: [
-                                                              Icon(
-                                                                Icons
-                                                                    .drag_handle,
-                                                                size: 18,
-                                                                color: Colors
-                                                                    .grey[600],
-                                                              ),
-                                                              const SizedBox(
-                                                                  width: 6),
-                                                              Text(
-                                                                '${index + 1}.',
-                                                                style:
-                                                                    TextStyle(
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .bold,
-                                                                  color: Colors
-                                                                          .grey[
-                                                                      600],
-                                                                  fontSize: 12,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Text(
-                                                          wagon.formattedNumber,
-                                                          style: TextStyle(
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: wagon.isValid
-                                                                ? Colors.green
-                                                                : Colors.red,
-                                                            fontSize: 14,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      if (wagon.notes != null &&
-                                                          wagon.notes!
-                                                              .isNotEmpty &&
-                                                          _extractNotesOnly(wagon
-                                                                  .notes!) !=
-                                                              '') ...[
-                                                        const SizedBox(
-                                                            width: 6),
-                                                        Icon(
-                                                          Icons.info,
-                                                          color: Colors.red,
-                                                          size: 16,
-                                                        ),
-                                                      ],
-                                                      Icon(
-                                                        wagon.isValid
-                                                            ? Icons.check_circle
-                                                            : Icons.error,
-                                                        color: wagon.isValid
-                                                            ? Colors.green
-                                                            : Colors.red,
-                                                        size: 18,
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    const SizedBox(height: 16),
-                                    SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                            onPressed: () =>
-                                                _showTableDialog(inventory),
-                                            icon: const Icon(
-                                                Icons.table_chart_outlined),
-                                            label: const Text(
-                                                'ZOBRAZIT TABULKU'))),
-                                    const SizedBox(height: 8),
-                                    SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                            onPressed: () =>
-                                                _copyTableToClipboard(
-                                                    inventory),
-                                            icon:
-                                                const Icon(Icons.copy_outlined),
-                                            label: const Text(
-                                                'ZKOPÍROVAT TABULKU'))),
-                                    const SizedBox(height: 8),
-                                    SizedBox(
-                                        width: double.infinity,
-                                        child: ElevatedButton.icon(
-                                            onPressed: () =>
-                                                _exportInventoryToEmail(
-                                                    inventory),
-                                            icon: const Icon(
-                                                Icons.email_outlined),
-                                            label: const Text(
-                                                'EXPORTOVAT DO E-MAILU'))),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+          child: _buildInventoryListColumn(context, inlineDetail: false),
         ),
       ]),
       floatingActionButton: FloatingActionButton(
@@ -1358,5 +1166,378 @@ class _InventoryListScreenState extends State<InventoryListScreen>
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  /// Master-detail rozložení pro rozevřený fold: seznam soupisů vlevo,
+  /// detail vybraného vozu vpravo (místo pushnutí celé obrazovky).
+  Widget _buildUnfoldedLayout(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SOUPISY VOZŮ'),
+        actions: [
+          IconButton(
+              onPressed: _loadInventories,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Obnovit'),
+        ],
+      ),
+      body: Column(children: [
+        ThemeService.amberStripe,
+        Expanded(
+          child: FoldTwoPane(
+            primary: _buildInventoryListColumn(context, inlineDetail: true),
+            secondary: _selectedWagon == null || _selectedInventory == null
+                ? const Center(child: Text('Vyberte vůz ze seznamu'))
+                : WagonDetailScreen(
+                    key: ValueKey(_selectedWagon!.number),
+                    inventoryId: _selectedInventory!.id,
+                    wagon: _selectedWagon!,
+                    wagonIndex: _selectedWagon!.order - 1,
+                    embedded: true,
+                    onUpdate: (f, n, s) => _loadInventories(),
+                    onRequestClose: () => setState(() {
+                      _selectedInventory = null;
+                      _selectedWagon = null;
+                    }),
+                  ),
+          ),
+        ),
+      ]),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => Navigator.pushNamed(context, '/scan'),
+        tooltip: 'Nový soupis',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildInventoryListColumn(
+    BuildContext context, {
+    required bool inlineDetail,
+  }) {
+    return _isLoadingData
+        ? const Center(child: CircularProgressIndicator())
+        : _inventories.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inventory_2_outlined,
+                        size: 80, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text('Zatím žádné soupisy',
+                        style:
+                            TextStyle(fontSize: 18, color: Colors.grey[600])),
+                  ],
+                ),
+              )
+            : ListView.builder(
+                itemCount: _inventories.length,
+                itemBuilder: (context, index) {
+                  final inventory = _inventories[index];
+                  final isTutorialDemo = widget.expandedInventoryId != null &&
+                      inventory.id == widget.expandedInventoryId;
+                  return Card(
+                    key: isTutorialDemo ? _demoTileKey : null,
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: ExpansionTile(
+                      initiallyExpanded: _expandedState[inventory.id] ?? false,
+                      onExpansionChanged: (expanded) {
+                        setState(() {
+                          _expandedState[inventory.id] = expanded;
+                        });
+                      },
+                      tilePadding: const EdgeInsets.only(
+                          left: 16, right: 8, top: 8, bottom: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      backgroundColor: Colors.transparent,
+                      collapsedBackgroundColor: Colors.transparent,
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        inventory.name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      onPressed: () => _editInventoryName(
+                                          inventory.id, inventory.name),
+                                      icon: const Icon(Icons.edit_outlined,
+                                          size: 16, color: Color(0xFF4A90B8)),
+                                      tooltip: 'Upravit název soupisu',
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(
+                                        minWidth: 28,
+                                        minHeight: 28,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(_getInventorySummary(inventory)),
+                                const SizedBox(height: 4),
+                                Text(_formatDate(inventory.lastModified)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                onPressed: () {
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (context) => ScanScreenFixed(
+                                              inventoryId: inventory.id)));
+                                },
+                                icon: const Icon(Icons.add_a_photo,
+                                    color: Colors.green),
+                              ),
+                              IconButton(
+                                onPressed: () => _deleteInventory(inventory.id),
+                                icon:
+                                    const Icon(Icons.delete, color: Colors.red),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      leading: const CircleAvatar(child: Icon(Icons.list_alt)),
+                      trailing: const SizedBox.shrink(),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                  'Seznam čísel vozů (${inventory.wagonNumbers.length}):',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              // Tlačítko pro otočení pořadí vozů
+                              if (inventory.wagonNumbers.isNotEmpty)
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _rotateWagonOrder(inventory.id),
+                                    icon: const Icon(Icons.rotate_right,
+                                        size: 16),
+                                    label: const Text('Otočit pořadí vozů'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF4A90B8),
+                                      side: const BorderSide(
+                                          color: Color(0xFF4A90B8)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                              const SizedBox(height: 12),
+                              // Seznam vozů s možností přesouvání
+                              if (inventory.wagonNumbers.isNotEmpty)
+                                SizedBox(
+                                  height:
+                                      300, // Omezená výška pro lepší přehlednost
+                                  child: ReorderableListView.builder(
+                                    itemCount: inventory.wagonNumbers.length,
+                                    onReorder: (oldIndex, newIndex) {
+                                      _reorderWagons(
+                                          inventory.id, oldIndex, newIndex);
+                                    },
+                                    itemBuilder: (context, index) {
+                                      final wagon =
+                                          inventory.wagonNumbers[index];
+                                      return Card(
+                                        key: ValueKey(wagon.number),
+                                        margin:
+                                            const EdgeInsets.only(bottom: 4),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        color: _getFlagBackgroundColor(
+                                            wagon.notes),
+                                        child: InkWell(
+                                          onTap: () => _handleWagonTap(
+                                              inventory, wagon,
+                                              inlineDetail: inlineDetail),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12, vertical: 8),
+                                            child: Row(
+                                              children: [
+                                                ReorderableDragStartListener(
+                                                  index: index,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(6),
+                                                    decoration: BoxDecoration(
+                                                      color: Theme.of(context)
+                                                          .colorScheme
+                                                          .surfaceContainerHighest,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              6),
+                                                      border: Border.all(
+                                                          color: Colors
+                                                              .grey[300]!),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.drag_handle,
+                                                          size: 18,
+                                                          color:
+                                                              Colors.grey[600],
+                                                        ),
+                                                        const SizedBox(
+                                                            width: 6),
+                                                        Text(
+                                                          '${index + 1}.',
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors
+                                                                .grey[600],
+                                                            fontSize: 12,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    wagon.formattedNumber,
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      color: wagon.isValid
+                                                          ? Colors.green
+                                                          : Colors.red,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ),
+                                                if (wagon.notes != null &&
+                                                    wagon.notes!.isNotEmpty &&
+                                                    _extractNotesOnly(
+                                                            wagon.notes!) !=
+                                                        '') ...[
+                                                  const SizedBox(width: 6),
+                                                  Icon(
+                                                    Icons.info,
+                                                    color: Colors.red,
+                                                    size: 16,
+                                                  ),
+                                                ],
+                                                Icon(
+                                                  wagon.isValid
+                                                      ? Icons.check_circle
+                                                      : Icons.error,
+                                                  color: wagon.isValid
+                                                      ? Colors.green
+                                                      : Colors.red,
+                                                  size: 18,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                      onPressed: () =>
+                                          _showTableDialog(inventory),
+                                      icon: const Icon(
+                                          Icons.table_chart_outlined),
+                                      label: const Text('ZOBRAZIT TABULKU'))),
+                              const SizedBox(height: 8),
+                              Builder(builder: (context) {
+                                final canCalculateMzob =
+                                    inventory.wagonNumbers.isNotEmpty &&
+                                        inventory.wagonNumbers
+                                            .every((w) => w.hasCompleteInfo);
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton.icon(
+                                            key: isTutorialDemo
+                                                ? _mzobButtonKey
+                                                : null,
+                                            onPressed: canCalculateMzob
+                                                ? () => _showMzobFlow(inventory)
+                                                : null,
+                                            icon: const Icon(
+                                                Icons.calculate_outlined),
+                                            label:
+                                                const Text('SPOČÍTAT MZOB'))),
+                                    if (!canCalculateMzob) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Pro výpočet MZOB musí mít všechny vozy vyplněné technické údaje.',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey[600]),
+                                      ),
+                                    ],
+                                  ],
+                                );
+                              }),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                      key: isTutorialDemo
+                                          ? _exportEmailButtonKey
+                                          : null,
+                                      onPressed: () =>
+                                          _exportInventoryToEmail(inventory),
+                                      icon: const Icon(Icons.email_outlined),
+                                      label:
+                                          const Text('EXPORTOVAT DO E-MAILU'))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
   }
 }

@@ -2,18 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
 import '../services/scan_settings_service.dart';
+import '../services/tutorial_target_registry.dart';
 import '../services/wagon_registry_service.dart';
 import 'contacts_screen.dart';
 import 'wagon_database_screen.dart';
+import '../widgets/adaptive/fold_info.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
   final ThemeMode currentTheme;
+  final Future<void> Function()? onReplayTutorial;
 
   const SettingsScreen({
     super.key,
     required this.onThemeChanged,
     required this.currentTheme,
+    this.onReplayTutorial,
   });
 
   @override
@@ -33,6 +37,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   // Databáze vozů
   int _wagonRegistryCount = 0;
 
+  final _databaseTileKey = GlobalKey();
+  final _contactsTileKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
@@ -40,12 +47,41 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadThemePreference();
     _loadScanSettings();
     _loadWagonRegistryCount();
+
+    TutorialTargetRegistry.registerTabController(
+        'settings.tabs', _tabController);
+    TutorialTargetRegistry.register('settings.databaseTile', _databaseTileKey);
+    TutorialTargetRegistry.register('settings.contactsTile', _contactsTileKey);
+    TutorialTargetRegistry.registerAction(
+        'settings.openDatabaseScreen', _openWagonDatabase);
+    TutorialTargetRegistry.registerAction(
+        'settings.openContactsScreen', _openContacts);
   }
 
   @override
   void dispose() {
+    TutorialTargetRegistry.unregisterTabController('settings.tabs');
+    TutorialTargetRegistry.unregister('settings.databaseTile');
+    TutorialTargetRegistry.unregister('settings.contactsTile');
+    TutorialTargetRegistry.unregisterAction('settings.openDatabaseScreen');
+    TutorialTargetRegistry.unregisterAction('settings.openContactsScreen');
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openWagonDatabase() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const WagonDatabaseScreen()),
+    );
+    _loadWagonRegistryCount();
+  }
+
+  void _openContacts() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactsScreen()),
+    );
   }
 
   Future<void> _loadThemePreference() async {
@@ -71,39 +107,93 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (mounted) setState(() => _wagonRegistryCount = count);
   }
 
+  // Ikony a popisky záložek – sdílené mezi TabBar (telefon) a
+  // NavigationRail (rozevřený fold), ať jsou vždy v souladu.
+  static const List<(IconData icon, String label)> _tabs = [
+    (Icons.contacts_outlined, 'Adresář'),
+    (Icons.document_scanner_outlined, 'Skenování'),
+    (Icons.storage_outlined, 'Databáze'),
+    (Icons.palette_outlined, 'Motiv'),
+    (Icons.info_outline, 'O aplikaci'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    final fold = FoldInfo.of(context);
+    return fold.isUnfolded
+        ? _buildUnfoldedLayout(context)
+        : _buildPhoneLayout(context);
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('NASTAVENÍ'),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.contacts_outlined), text: 'Adresář'),
-            Tab(icon: Icon(Icons.document_scanner_outlined), text: 'Skenování'),
-            Tab(icon: Icon(Icons.storage_outlined), text: 'Databáze'),
-            Tab(icon: Icon(Icons.palette_outlined), text: 'Motiv'),
-            Tab(icon: Icon(Icons.info_outline), text: 'O aplikaci'),
-          ],
+          tabs: _tabs
+              .map((t) => Tab(icon: Icon(t.$1), text: t.$2))
+              .toList(growable: false),
         ),
       ),
       body: Column(
         children: [
           ThemeService.amberStripe,
+          Expanded(child: _buildTabBarView()),
+        ],
+      ),
+    );
+  }
+
+  /// Na rozevřeném foldu nahradí horní TabBar postranní NavigationRail
+  /// (Material vzor pro velké obrazovky). Obojí řídí stejný
+  /// `_tabController`, takže tutoriál (`resolveTabController` +
+  /// `animateTo`) funguje beze změny v obou layoutech.
+  Widget _buildUnfoldedLayout(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('NASTAVENÍ')),
+      body: Column(
+        children: [
+          ThemeService.amberStripe,
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildContactsTab(),
-                _buildScanTab(),
-                _buildDatabaseTab(),
-                _buildThemeTab(),
-                _buildAboutTab(),
+                AnimatedBuilder(
+                  animation: _tabController,
+                  builder: (context, _) => NavigationRail(
+                    selectedIndex: _tabController.index,
+                    onDestinationSelected: (index) =>
+                        _tabController.animateTo(index),
+                    labelType: NavigationRailLabelType.all,
+                    destinations: _tabs
+                        .map((t) => NavigationRailDestination(
+                              icon: Icon(t.$1),
+                              label: Text(t.$2),
+                            ))
+                        .toList(growable: false),
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: _buildTabBarView()),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTabBarView() {
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        _buildContactsTab(),
+        _buildScanTab(),
+        _buildDatabaseTab(),
+        _buildThemeTab(),
+        _buildAboutTab(),
+      ],
     );
   }
 
@@ -114,15 +204,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       padding: const EdgeInsets.all(16),
       children: [
         _buildSettingsTile(
+          key: _contactsTileKey,
           icon: Icons.contacts_outlined,
           title: 'Správa kontaktů',
           subtitle:
               'Přidávejte, upravujte a mažte kontakty pro odesílání soupisů',
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const ContactsScreen()),
-          ),
+          onTap: _openContacts,
         ),
         const SizedBox(height: 8),
         _buildSettingsTile(
@@ -142,19 +230,14 @@ class _SettingsScreenState extends State<SettingsScreen>
       padding: const EdgeInsets.all(16),
       children: [
         _buildSettingsTile(
+          key: _databaseTileKey,
           icon: Icons.storage_outlined,
           title: 'Databáze vozů',
           subtitle: _wagonRegistryCount == 0
               ? 'Zatím žádné uložené vozy'
               : 'Uloženo vozů: $_wagonRegistryCount',
           trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const WagonDatabaseScreen()),
-            );
-            _loadWagonRegistryCount();
-          },
+          onTap: _openWagonDatabase,
         ),
         const SizedBox(height: 8),
         _buildSettingsTile(
@@ -177,20 +260,16 @@ class _SettingsScreenState extends State<SettingsScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                  'Aplikace si u každého naskenovaného vozu pamatuje '
+              const Text('Aplikace si u každého naskenovaného vozu pamatuje '
                   'poznámky a příznaky napříč všemi soupisy.'),
               const SizedBox(height: 12),
-              const Text(
-                  '• Když je vůz nalezen v databázi, jeho informace se '
+              const Text('• Když je vůz nalezen v databázi, jeho informace se '
                   'při skenování automaticky předvyplní.'),
               const SizedBox(height: 8),
-              const Text(
-                  '• Když v detailu vozu poznámky/příznaky smažete a '
+              const Text('• Když v detailu vozu poznámky/příznaky smažete a '
                   'uložíte, smaže se i záznam v databázi.'),
               const SizedBox(height: 8),
-              const Text(
-                  '• Databázi lze v sekci "Databáze vozů" prohledávat, '
+              const Text('• Databázi lze v sekci "Databáze vozů" prohledávat, '
                   'ručně upravovat i exportovat/importovat jako .xlsx.'),
             ],
           ),
@@ -232,8 +311,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _buildScanModeRadio(
               icon: Icons.psychology_outlined,
               title: 'Kvalitní (AI)',
-              subtitle:
-                  'Rozpoznávání pomocí AI – vyžaduje internet a API klíč',
+              subtitle: 'Rozpoznávání pomocí AI – vyžaduje internet a API klíč',
               value: ScanMode.quality,
             ),
           ]),
@@ -305,13 +383,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: RadioListTile<ScanMode>(
         value: value,
         title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle:
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         secondary: Icon(icon, color: ThemeService.kRailAmber),
         tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
         activeColor: ThemeService.kRailAmber,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -328,13 +404,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: RadioListTile<AiProvider?>(
         value: value,
         title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle:
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         secondary: Icon(icon, color: ThemeService.kRailAmber),
         tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
         activeColor: ThemeService.kRailAmber,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -349,8 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           title: 'API klíč',
           subtitle: _hasApiKey ? 'Klíč je nastaven' : 'Klíč není nastaven',
           trailing: _hasApiKey
-              ? const Icon(Icons.check_circle,
-                  color: Colors.green, size: 20)
+              ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
               : const Icon(Icons.arrow_forward_ios, size: 16),
           onTap: _showApiKeyDialog,
         ),
@@ -363,8 +436,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     bool obscure = true;
     final providerName =
         _aiProvider == AiProvider.openai ? 'OpenAI' : 'Anthropic';
-    final hintText =
-        _aiProvider == AiProvider.openai ? 'sk-…' : 'sk-ant-…';
+    final hintText = _aiProvider == AiProvider.openai ? 'sk-…' : 'sk-ant-…';
 
     // Předvyplnit existující klíč (zobrazí se zakrytý)
     ScanSettingsService.getApiKey().then((key) {
@@ -384,10 +456,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               hintText: hintText,
               border: const OutlineInputBorder(),
               suffixIcon: IconButton(
-                icon: Icon(
-                    obscure ? Icons.visibility : Icons.visibility_off),
-                onPressed: () =>
-                    setDialogState(() => obscure = !obscure),
+                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setDialogState(() => obscure = !obscure),
               ),
             ),
           ),
@@ -399,8 +469,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                   if (mounted) setState(() => _hasApiKey = false);
                   if (context.mounted) Navigator.pop(context);
                 },
-                child: const Text('Smazat',
-                    style: TextStyle(color: Colors.red)),
+                child:
+                    const Text('Smazat', style: TextStyle(color: Colors.red)),
               ),
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -448,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen>
         _buildSettingsTile(
           icon: Icons.info_outline,
           title: 'O aplikaci',
-          subtitle: 'Soupis vozů – verze 1.0.5',
+          subtitle: 'Soupis vozů – verze 1.1.0',
           onTap: _showAboutDialog,
         ),
         const SizedBox(height: 8),
@@ -474,6 +544,15 @@ class _SettingsScreenState extends State<SettingsScreen>
           trailing: const Icon(Icons.open_in_new, size: 16),
           onTap: _openPrivacyPolicy,
         ),
+        if (widget.onReplayTutorial != null) ...[
+          const SizedBox(height: 8),
+          _buildSettingsTile(
+            icon: Icons.school_outlined,
+            title: 'Znovu spustit tutoriál',
+            subtitle: 'Projít znovu úvodní průvodce aplikací',
+            onTap: () => widget.onReplayTutorial!(),
+          ),
+        ],
       ],
     );
   }
@@ -481,6 +560,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   // ─── SDÍLENÉ WIDGETY ────────────────────────────────────────────────────────
 
   Widget _buildSettingsTile({
+    Key? key,
     required IconData icon,
     required String title,
     required String subtitle,
@@ -489,14 +569,13 @@ class _SettingsScreenState extends State<SettingsScreen>
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Card(
+      key: key,
       child: ListTile(
         leading: Icon(icon, color: ThemeService.kRailAmber),
         title: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        subtitle:
-            Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
+        subtitle: Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
         trailing: trailing,
-        tileColor:
-            isDark ? ThemeService.kRailCharcoal : Colors.white,
+        tileColor: isDark ? ThemeService.kRailCharcoal : Colors.white,
         onTap: onTap,
       ),
     );
@@ -622,10 +701,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           children: [
             const Text('Soupis vozů'),
             const SizedBox(height: 8),
-            const Text('Verze: 1.0.5'),
+            const Text('Verze: 1.1.0'),
             const SizedBox(height: 8),
-            const Text(
-                'Aplikace pro vytváření soupisů železničních vozů.'),
+            const Text('Aplikace pro vytváření soupisů železničních vozů.'),
             const SizedBox(height: 16),
             const Center(child: Text('© White Whale Media 2026')),
             const SizedBox(height: 16),
@@ -648,6 +726,23 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// Historie verzí zobrazená v dialogu changelogu – udržuje se ručně
   /// souběžně s CHANGELOG.md v kořeni repozitáře.
   static const List<Map<String, dynamic>> _changelogEntries = [
+    {
+      'version': '1.1.0',
+      'date': '19. 9. 2026',
+      'notes': [
+        'Nový výpočet MZOB (Mezinárodní zpráva o brzdění vlaku) přímo ze '
+            'soupisu vozů.',
+        'Nový interaktivní tutoriál appky – provede skenováním vozu, '
+            'soupisem i výpočtem MZOB. Jde kdykoliv znovu spustit tady '
+            'v Nastavení.',
+        'Přidáno rozšířené rozložení pro rozevřené foldovací telefony '
+            '(např. Galaxy Z Fold) – širší displej teď appka využije '
+            'dvoupanelovým nebo rozšířeným zobrazením. Na běžném telefonu '
+            '(i na Foldu ve složeném stavu) beze změny.',
+        'Oprava: na obrazovce skenování zůstával pod tlačítkem SKENOVAT '
+            'tenký nevybarvený pruh.',
+      ],
+    },
     {
       'version': '1.0.5',
       'date': '15. 8. 2026',
@@ -745,8 +840,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _openLinkedIn() async {
-    final url =
-        Uri.parse('https://www.linkedin.com/in/daniel-macho-8ab0477a/');
+    final url = Uri.parse('https://www.linkedin.com/in/daniel-macho-8ab0477a/');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     } else {

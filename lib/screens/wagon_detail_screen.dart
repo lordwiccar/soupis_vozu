@@ -5,6 +5,7 @@ import '../models/inventory.dart';
 import '../services/decimal_input.dart';
 import '../services/inventory_service.dart';
 import '../services/theme_service.dart';
+import '../services/tutorial_target_registry.dart';
 import '../services/uic_validator.dart';
 
 class WagonDetailScreen extends StatefulWidget {
@@ -13,12 +14,23 @@ class WagonDetailScreen extends StatefulWidget {
   final int wagonIndex;
   final Function(String, String, String) onUpdate;
 
+  /// Když true, obrazovka se vykreslí bez vlastního Scaffold/AppBar jako
+  /// panel vložený do rodičovského layoutu (fold master-detail) místo
+  /// klasické celoobrazovkové pushnuté obrazovky.
+  final bool embedded;
+
+  /// Voláno místo `Navigator.pop`, když je `embedded == true` – rodič si
+  /// tak sám řídí, co znamená "zavřít" (typicky zrušení výběru vozu).
+  final VoidCallback? onRequestClose;
+
   const WagonDetailScreen({
     super.key,
     required this.inventoryId,
     required this.wagon,
     required this.wagonIndex,
     required this.onUpdate,
+    this.embedded = false,
+    this.onRequestClose,
   });
 
   @override
@@ -43,9 +55,19 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   final _axleCountController = TextEditingController();
   bool _nonMetallicBlocks = false;
 
+  final _flagsRowKey = GlobalKey();
+  final _notesFieldKey = GlobalKey();
+  final _technicalCardKey = GlobalKey();
+  final _saveButtonKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
+    TutorialTargetRegistry.register('wagonDetail.flagsRow', _flagsRowKey);
+    TutorialTargetRegistry.register('wagonDetail.notesField', _notesFieldKey);
+    TutorialTargetRegistry.register(
+        'wagonDetail.technicalCard', _technicalCardKey);
+    TutorialTargetRegistry.register('wagonDetail.saveButton', _saveButtonKey);
     // Parsování příznaků z existujících poznámek
     final parsed = WagonNumber.parseNotes(widget.wagon.notes);
     _selectedStatus = parsed.flags.join(' + ');
@@ -66,6 +88,10 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
 
   @override
   void dispose() {
+    TutorialTargetRegistry.unregister('wagonDetail.flagsRow');
+    TutorialTargetRegistry.unregister('wagonDetail.notesField');
+    TutorialTargetRegistry.unregister('wagonDetail.technicalCard');
+    TutorialTargetRegistry.unregister('wagonDetail.saveButton');
     _notesController.dispose();
     _weightController.dispose();
     _brakeWeightGController.dispose();
@@ -76,6 +102,17 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     _lengthController.dispose();
     _axleCountController.dispose();
     super.dispose();
+  }
+
+  /// Zavře obrazovku/panel – na telefonu (pushnutá routa) odpovídá dnešnímu
+  /// `Navigator.pop`, v embedded panelu (fold) místo toho řekne rodiči, že
+  /// se má výběr vozu zrušit.
+  void _close([Object? result]) {
+    if (widget.embedded) {
+      widget.onRequestClose?.call();
+    } else {
+      Navigator.pop(context, result);
+    }
   }
 
   Future<void> _editWagonNumber() async {
@@ -133,7 +170,12 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
         if (mounted) {
           widget.onUpdate(
               result, widget.wagon.notes ?? '', 'Upraveno číslo vozu');
-          Navigator.pop(context);
+          // Na telefonu se po úpravě čísla obrazovka zavírá jako dřív; v
+          // embedded panelu (fold) zůstává otevřená, jen se překreslí s
+          // novými daty od rodiče.
+          if (!widget.embedded) {
+            Navigator.pop(context);
+          }
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -199,7 +241,12 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
         );
         widget.onUpdate(
             widget.wagon.formattedNumber, newNotes, _selectedStatus);
-        Navigator.pop(context, true);
+        // V embedded panelu (fold) po uložení záměrně nezavíráme – uživatel
+        // má díky master-detail rozložení pořád vidět seznam i vedle sebe
+        // upravovaný vůz. Na telefonu se obrazovka zavírá jako dřív.
+        if (!widget.embedded) {
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -251,7 +298,8 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
           ),
         );
         widget.onUpdate(widget.wagon.formattedNumber, '', '');
-        Navigator.pop(context);
+        // Vůz už neexistuje, takže panel/obrazovku vždy zavřeme.
+        _close();
       }
     } catch (e) {
       if (mounted) {
@@ -301,6 +349,12 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return widget.embedded
+        ? _buildEmbedded(context)
+        : _buildPhoneScaffold(context);
+  }
+
+  Widget _buildPhoneScaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('ČÍSLO VOZU ${widget.wagonIndex + 1}'),
@@ -318,332 +372,13 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Základní informace o čísle
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              widget.wagon.isValid
-                                  ? Icons.check_circle
-                                  : Icons.error,
-                              color: widget.wagon.isValid
-                                  ? ThemeService.kValidGreen
-                                  : ThemeService.kValidRed,
-                              size: 32,
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          widget.wagon.formattedNumber,
-                                          style: TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: widget.wagon.isValid
-                                                ? ThemeService.kValidGreen
-                                                : ThemeService.kValidRed,
-                                          ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: _editWagonNumber,
-                                        icon: const Icon(Icons.edit_outlined,
-                                            color: ThemeService.kRailSlate),
-                                        tooltip: 'Upravit číslo vozu',
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(
-                                          minWidth: 32,
-                                          minHeight: 32,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    widget.wagon.isValid
-                                        ? 'Platné UIC číslo'
-                                        : 'Neplatné UIC číslo',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ChoiceChip(
-                                label: Text(_selectedStatus),
-                                selected: true,
-                                onSelected: null, // Nelze změnit
-                                backgroundColor: ThemeService.kRailAmber,
-                                labelStyle: const TextStyle(
-                                  color: ThemeService.kRailBlack,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Skenováno: ${DateFormat.yMd().add_Hm().format(widget.wagon.scannedAt)}',
-                          style:
-                              const TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
+                _buildBasicInfoCard(),
                 const SizedBox(height: 16),
-
-                // Výběr příznaku
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Nálepka:',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: _statuses.map((status) {
-                            final isSelected = _selectedStatus.contains(status);
-                            return Expanded(
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 2),
-                                child: ChoiceChip(
-                                  label: Text(
-                                    status,
-                                    style: TextStyle(
-                                      fontSize: isSelected ? 13 : 14,
-                                    ),
-                                  ),
-                                  selected: isSelected,
-                                  onSelected: (selected) {
-                                    setState(() {
-                                      if (selected) {
-                                        if (_selectedStatus.trim().isEmpty) {
-                                          _selectedStatus = status;
-                                        } else if (!_selectedStatus
-                                            .contains(status)) {
-                                          _selectedStatus =
-                                              '$_selectedStatus + $status';
-                                        }
-                                      } else {
-                                        if (_selectedStatus == status) {
-                                          _selectedStatus = '';
-                                        } else {
-                                          final parts =
-                                              _selectedStatus.split(' + ');
-                                          parts.remove(status);
-                                          _selectedStatus = parts.join(' + ');
-                                        }
-                                      }
-                                    });
-                                  },
-                                  backgroundColor: isSelected
-                                      ? ThemeService.kRailAmber
-                                      : null,
-                                  labelStyle: TextStyle(
-                                    color: isSelected
-                                        ? ThemeService.kRailBlack
-                                        : null,
-                                    fontSize: isSelected ? 12 : 13,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 4, vertical: 6),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _statusDescriptions[_selectedStatus] ?? '',
-                          style:
-                              const TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
+                _buildFlagsCard(),
                 const SizedBox(height: 16),
-
-                // Pole pro poznámky
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Poznámky:',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _notesController,
-                          decoration: const InputDecoration(
-                            labelText: 'Poznámky',
-                            hintText: 'Zadejte doplňující informace...',
-                            border: OutlineInputBorder(),
-                            alignLabelWithHint: true,
-                            suffixIcon: Icon(Icons.clear),
-                          ),
-                          maxLines: 3,
-                          onTap: () {
-                            // Vymazání při prvním kliknutí pokud obsahuje výchozí text
-                            if (_notesController.text.isNotEmpty &&
-                                _notesController.text == _selectedStatus) {
-                              _notesController.clear();
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Doplňující informace o stavu vozu, poškození atd.',
-                          style: TextStyle(fontSize: 14, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
+                _buildNotesCard(),
                 const SizedBox(height: 16),
-
-                // Technické údaje o voze
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Technické údaje:',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _weightController,
-                                label: 'Hmotnost vozu',
-                                suffix: 't',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _lengthController,
-                                label: 'Délka',
-                                suffix: 'm',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _brakeWeightGController,
-                                label: 'Brzdící váha (P)',
-                                suffix: 't',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _brakeWeightPController,
-                                label: 'Brzdící váha (L)',
-                                suffix: 't',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _maxSpeedEmptyController,
-                                label: 'Rychlost prázdný',
-                                suffix: 'km/h',
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDecimalField(
-                                controller: _maxSpeedLoadedController,
-                                label: 'Rychlost ložený',
-                                suffix: 'km/h',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _buildIntField(
-                          controller: _axleCountController,
-                          label: 'Počet náprav',
-                        ),
-                        const SizedBox(height: 12),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Ruční brzda'),
-                          value: _handbrake,
-                          activeTrackColor: ThemeService.kRailAmber,
-                          onChanged: (value) {
-                            setState(() => _handbrake = value);
-                          },
-                        ),
-                        if (_handbrake) ...[
-                          const SizedBox(height: 4),
-                          _buildDecimalField(
-                            controller: _handbrakeForceController,
-                            label: 'Hodnota ruční brzdy',
-                            suffix: 'kN',
-                          ),
-                        ],
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('Nekovové špalíky'),
-                          value: _nonMetallicBlocks,
-                          activeTrackColor: ThemeService.kRailAmber,
-                          onChanged: (value) {
-                            setState(() => _nonMetallicBlocks = value);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildTechnicalCard(),
               ],
             ),
           ),
@@ -655,53 +390,427 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Tlačítko pro odstranění vozu
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showDeleteWagonDialog(),
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  label: const Text('Odstranit vůz ze soupisu'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
+          child: _buildBottomActions(),
+        ),
+      ),
+    );
+  }
+
+  /// Panel vložený do rodičovského layoutu na rozevřeném foldu – bez
+  /// vlastního Scaffold/AppBar, s tenkou hlavičkou a zavíracím tlačítkem
+  /// místo systémového "zpět".
+  Widget _buildEmbedded(BuildContext context) {
+    return Material(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'ČÍSLO VOZU ${widget.wagonIndex + 1}',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              // Hlavní tlačítka
-              Row(
+                IconButton(
+                  onPressed: () => _close(),
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Zavřít',
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Zpět'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _updateWagon,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: widget.wagon.isValid
-                            ? ThemeService.kRailAmber
-                            : Colors.orange,
-                        foregroundColor: ThemeService.kRailBlack,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                      ),
-                      child: const Text('ULOŽIT ZMĚNY'),
-                    ),
-                  ),
+                  _buildBasicInfoCard(),
+                  const SizedBox(height: 16),
+                  _buildFlagsCard(),
+                  const SizedBox(height: 16),
+                  _buildNotesCard(),
+                  const SizedBox(height: 16),
+                  _buildTechnicalCard(),
                 ],
               ),
-            ],
+            ),
           ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: _buildBottomActions(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActions() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Tlačítko pro odstranění vozu
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showDeleteWagonDialog(),
+            icon: const Icon(Icons.delete, color: Colors.red),
+            label: const Text('Odstranit vůz ze soupisu'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Hlavní tlačítka
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _close(),
+                child: Text(widget.embedded ? 'Zavřít' : 'Zpět'),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: ElevatedButton(
+                key: _saveButtonKey,
+                onPressed: _updateWagon,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.wagon.isValid
+                      ? ThemeService.kRailAmber
+                      : Colors.orange,
+                  foregroundColor: ThemeService.kRailBlack,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                child: const Text('ULOŽIT ZMĚNY'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBasicInfoCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  widget.wagon.isValid ? Icons.check_circle : Icons.error,
+                  color: widget.wagon.isValid
+                      ? ThemeService.kValidGreen
+                      : ThemeService.kValidRed,
+                  size: 32,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.wagon.formattedNumber,
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: widget.wagon.isValid
+                                    ? ThemeService.kValidGreen
+                                    : ThemeService.kValidRed,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _editWagonNumber,
+                            icon: const Icon(Icons.edit_outlined,
+                                color: ThemeService.kRailSlate),
+                            tooltip: 'Upravit číslo vozu',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        widget.wagon.isValid
+                            ? 'Platné UIC číslo'
+                            : 'Neplatné UIC číslo',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ChoiceChip(
+                    label: Text(_selectedStatus),
+                    selected: true,
+                    onSelected: null, // Nelze změnit
+                    backgroundColor: ThemeService.kRailAmber,
+                    labelStyle: const TextStyle(
+                      color: ThemeService.kRailBlack,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Skenováno: ${DateFormat.yMd().add_Hm().format(widget.wagon.scannedAt)}',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFlagsCard() {
+    return Card(
+      key: _flagsRowKey,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nálepka:',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: _statuses.map((status) {
+                final isSelected = _selectedStatus.contains(status);
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: ChoiceChip(
+                      label: Text(
+                        status,
+                        style: TextStyle(
+                          fontSize: isSelected ? 13 : 14,
+                        ),
+                      ),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            if (_selectedStatus.trim().isEmpty) {
+                              _selectedStatus = status;
+                            } else if (!_selectedStatus.contains(status)) {
+                              _selectedStatus = '$_selectedStatus + $status';
+                            }
+                          } else {
+                            if (_selectedStatus == status) {
+                              _selectedStatus = '';
+                            } else {
+                              final parts = _selectedStatus.split(' + ');
+                              parts.remove(status);
+                              _selectedStatus = parts.join(' + ');
+                            }
+                          }
+                        });
+                      },
+                      backgroundColor:
+                          isSelected ? ThemeService.kRailAmber : null,
+                      labelStyle: TextStyle(
+                        color: isSelected ? ThemeService.kRailBlack : null,
+                        fontSize: isSelected ? 12 : 13,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 6),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _statusDescriptions[_selectedStatus] ?? '',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotesCard() {
+    return Card(
+      key: _notesFieldKey,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Poznámky:',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _notesController,
+              decoration: const InputDecoration(
+                labelText: 'Poznámky',
+                hintText: 'Zadejte doplňující informace...',
+                border: OutlineInputBorder(),
+                alignLabelWithHint: true,
+                suffixIcon: Icon(Icons.clear),
+              ),
+              maxLines: 3,
+              onTap: () {
+                // Vymazání při prvním kliknutí pokud obsahuje výchozí text
+                if (_notesController.text.isNotEmpty &&
+                    _notesController.text == _selectedStatus) {
+                  _notesController.clear();
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Doplňující informace o stavu vozu, poškození atd.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTechnicalCard() {
+    return Card(
+      key: _technicalCardKey,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Technické údaje:',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _weightController,
+                    label: 'Hmotnost vozu',
+                    suffix: 't',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _lengthController,
+                    label: 'Délka',
+                    suffix: 'm',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _brakeWeightGController,
+                    label: 'Brzdící váha (P)',
+                    suffix: 't',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _brakeWeightPController,
+                    label: 'Brzdící váha (L)',
+                    suffix: 't',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _maxSpeedEmptyController,
+                    label: 'Rychlost prázdný',
+                    suffix: 'km/h',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildDecimalField(
+                    controller: _maxSpeedLoadedController,
+                    label: 'Rychlost ložený',
+                    suffix: 'km/h',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _buildIntField(
+              controller: _axleCountController,
+              label: 'Počet náprav',
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Ruční brzda'),
+              value: _handbrake,
+              activeTrackColor: ThemeService.kRailAmber,
+              onChanged: (value) {
+                setState(() => _handbrake = value);
+              },
+            ),
+            if (_handbrake) ...[
+              const SizedBox(height: 4),
+              _buildDecimalField(
+                controller: _handbrakeForceController,
+                label: 'Hodnota ruční brzdy',
+                suffix: 'kN',
+              ),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Nekovové špalíky'),
+              value: _nonMetallicBlocks,
+              activeTrackColor: ThemeService.kRailAmber,
+              onChanged: (value) {
+                setState(() => _nonMetallicBlocks = value);
+              },
+            ),
+          ],
         ),
       ),
     );

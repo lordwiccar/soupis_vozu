@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/contact.dart';
 import '../services/contact_service.dart';
 import '../services/theme_service.dart';
+import '../services/tutorial_target_registry.dart';
+import '../widgets/adaptive/fold_info.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -14,10 +16,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
   List<Contact> _contacts = [];
   bool _isLoading = true;
 
+  final _addDialogContentKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
     _loadContacts();
+    TutorialTargetRegistry.register(
+        'contacts.addDialogContent', _addDialogContentKey);
+    TutorialTargetRegistry.registerAction(
+        'contacts.openAddDialog', _showAddContactDialog);
+  }
+
+  @override
+  void dispose() {
+    TutorialTargetRegistry.unregister('contacts.addDialogContent');
+    TutorialTargetRegistry.unregisterAction('contacts.openAddDialog');
+    super.dispose();
   }
 
   Future<void> _loadContacts() async {
@@ -35,27 +50,59 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final fold = FoldInfo.of(context);
+    return fold.isUnfolded
+        ? _buildUnfoldedLayout(context)
+        : _buildPhoneLayout(context);
+  }
+
+  Widget _buildPhoneLayout(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('ADRESÁŘ'),
       ),
-      body: Column(
-        children: [
-          ThemeService.amberStripe,
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _contacts.isEmpty
-                    ? _buildEmptyState()
-                    : _buildContactList(),
-          ),
-        ],
+      body: _buildBody(context),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddContactDialog,
+        tooltip: 'Přidat kontakt',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  /// Na rozevřeném foldu zůstává seznam kontaktů omezený na čitelnou šířku
+  /// a vystředěný, ať se nenatáhne přes celou širokou obrazovku.
+  Widget _buildUnfoldedLayout(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ADRESÁŘ'),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: _buildBody(context),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddContactDialog,
         tooltip: 'Přidat kontakt',
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Column(
+      children: [
+        ThemeService.amberStripe,
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _contacts.isEmpty
+                  ? _buildEmptyState()
+                  : _buildContactList(),
+        ),
+      ],
     );
   }
 
@@ -73,8 +120,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
           Text(
             'Zatím žádné kontakty',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Theme.of(context).colorScheme.outline,
-            ),
+                  color: Theme.of(context).colorScheme.outline,
+                ),
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(
@@ -97,7 +144,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             leading: CircleAvatar(
               backgroundColor: contact.isCopyRecipient
                   ? ThemeService.kRailSlate.withValues(alpha: 0.2)
-                  : Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
+                  : Theme.of(context)
+                      .colorScheme
+                      .outline
+                      .withValues(alpha: 0.15),
               child: Icon(
                 contact.isCopyRecipient ? Icons.person_add : Icons.person,
                 color: contact.isCopyRecipient
@@ -123,9 +173,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         const SizedBox(width: 4),
                         Text(
                           'Příjemce v Kopie',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: ThemeService.kRailSlate,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.labelSmall?.copyWith(
+                                    color: ThemeService.kRailSlate,
+                                  ),
                         ),
                       ],
                     ),
@@ -156,14 +207,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _showAddContactDialog() {
-    final nameController  = TextEditingController();
+    final nameController = TextEditingController();
     final emailController = TextEditingController();
-    bool isCopyRecipient  = false;
+    bool isCopyRecipient = false;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
+          key: _addDialogContentKey,
           title: const Text('Přidat kontakt'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -181,7 +233,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
               const SizedBox(height: 16),
               CheckboxListTile(
                 title: const Text('Použít jako příjemce v kopii'),
-                subtitle: const Text('Bude automaticky přidáván k příjemcům soupisu.'),
+                subtitle: const Text(
+                    'Bude automaticky přidáván k příjemcům soupisu.'),
                 value: isCopyRecipient,
                 onChanged: (v) => setState(() => isCopyRecipient = v ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
@@ -195,7 +248,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final name  = nameController.text.trim();
+                final name = nameController.text.trim();
                 final email = emailController.text.trim();
                 if (name.isNotEmpty && email.isNotEmpty) {
                   await ContactService.createContact(name, email,
@@ -213,9 +266,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   void _showEditContactDialog(Contact contact) {
-    final nameController  = TextEditingController(text: contact.name);
+    final nameController = TextEditingController(text: contact.name);
     final emailController = TextEditingController(text: contact.email);
-    bool isCopyRecipient  = contact.isCopyRecipient;
+    bool isCopyRecipient = contact.isCopyRecipient;
 
     showDialog(
       context: context,
@@ -238,7 +291,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
               const SizedBox(height: 16),
               CheckboxListTile(
                 title: const Text('Použít jako příjemce v Kopie'),
-                subtitle: const Text('Bude automaticky přidáván k příjemcům soupisu.'),
+                subtitle: const Text(
+                    'Bude automaticky přidáván k příjemcům soupisu.'),
                 value: isCopyRecipient,
                 onChanged: (v) => setState(() => isCopyRecipient = v ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
@@ -252,7 +306,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                final name  = nameController.text.trim();
+                final name = nameController.text.trim();
                 final email = emailController.text.trim();
                 if (name.isNotEmpty && email.isNotEmpty) {
                   await ContactService.updateContact(contact.id, name, email,
