@@ -108,6 +108,10 @@ class WagonNumber {
       axleCount != null ||
       nonMetallicBlocks;
 
+  /// Má vůz příznak R1 (brzda neupotřebitelná)? Takový vůz se do brzdící
+  /// váhy vlaku započítává hodnotou 0.
+  bool get isBrakeUnusable => parseNotes(notes).flags.contains(flagR1);
+
   /// Má vůz v databázi vyplněné všechny sledované technické údaje?
   /// Výjimkou je "Ruční brzda" – řada vozů ji fyzicky nemá, takže se
   /// nevyžaduje, aby byla zapnutá; pokud zapnutá je, vyžaduje se u ní

@@ -53,6 +53,19 @@ class WagonRegistryEntry {
       axleCount != null ||
       nonMetallicBlocks;
 
+  /// Má záznam vyplněný alespoň jeden technický údaj (bez ohledu na
+  /// poznámky a příznaky)?
+  bool get hasTechnicalInfo =>
+      weight != null ||
+      brakeWeightG != null ||
+      brakeWeightP != null ||
+      handbrake ||
+      maxSpeedEmpty != null ||
+      maxSpeedLoaded != null ||
+      length != null ||
+      axleCount != null ||
+      nonMetallicBlocks;
+
   /// Má vůz v databázi vyplněné všechny sledované technické údaje?
   /// Výjimkou je "Ruční brzda" – řada vozů ji fyzicky nemá, takže se
   /// nevyžaduje, aby byla zapnutá; pokud zapnutá je, vyžaduje se u ní
@@ -109,11 +122,13 @@ class WagonRegistryEntry {
 /// Souhrn výsledku importu registru ze souboru.
 class WagonImportResult {
   final int added;
+  final int updated; // existující vozy přepsané novějším zápisem
   final int skippedExisting;
   final int invalidRows;
 
   const WagonImportResult({
     required this.added,
+    required this.updated,
     required this.skippedExisting,
     required this.invalidRows,
   });

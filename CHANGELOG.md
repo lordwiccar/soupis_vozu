@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.1+9 (2026-10-28)
+- Výpis MZOB: přidána maximální rychlost vlaku podle vozu s nejnižší
+  rychlostí v soupisu (u loženého vlaku rychlost ložený, jinak prázdný).
+- Výpis MZOB: hmotnost vlaku se zaokrouhluje nahoru a zajišťovací síla dolů
+  na celá čísla.
+- Výpis MZOB: vozy s příznakem R1 (brzda neupotřebitelná) se do brzdící
+  váhy započítávají hodnotou 0; po odebrání příznaku se jejich brzdící váha
+  opět započítá.
+- Výpis MZOB: zobrazení přepracováno do dvousloupcové tabulky a položky
+  seřazeny v novém pořadí (Počet vozů, Hmotnost, Brzdící váha, Zajišťovací
+  síla, Vozy s nekovovými špalíky, Vozy v režimu G, Vozy v režimu P, Počet
+  ručních brzd, Délka soupravy, Počet náprav, Max. rychlost vlaku).
+- Detail vozu i úprava záznamu v databázi vozů: po zapnutí přepínače Ruční
+  brzda se kurzor automaticky přesune do pole pro její hodnotu.
+- Import databáze vozů:
+  - importují se i vozy bez jakýchkoliv údajů,
+  - u existujících vozů se technické údaje přepíšou novějším záznamem
+    (podle sloupce "Aktualizováno"), vyplněné údaje mají ale přednost před
+    časem – prázdný záznam nikdy nepřepíše vyplněný a vyplněný vždy doplní
+    prázdný,
+  - vyplněné příznaky a poznámka se u existujících vozů nikdy nepřepisují,
+    prázdné se z importu doplní,
+  - souhrn importu nově ukazuje i počet aktualizovaných vozů.
+
 ## 1.1.0+8 (2026-09-19)
 - Přidán výpočet MZOB (Mezinárodní zpráva o brzdění vlaku) přímo ze soupisu
   vozů – appka spočítá hmotnost, brzdící váhu, délku, počet náprav a další

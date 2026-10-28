@@ -49,6 +49,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
   final _brakeWeightPController = TextEditingController();
   bool _handbrake = false;
   final _handbrakeForceController = TextEditingController();
+  final _handbrakeForceFocusNode = FocusNode();
   final _maxSpeedEmptyController = TextEditingController();
   final _maxSpeedLoadedController = TextEditingController();
   final _lengthController = TextEditingController();
@@ -97,6 +98,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     _brakeWeightGController.dispose();
     _brakeWeightPController.dispose();
     _handbrakeForceController.dispose();
+    _handbrakeForceFocusNode.dispose();
     _maxSpeedEmptyController.dispose();
     _maxSpeedLoadedController.dispose();
     _lengthController.dispose();
@@ -317,9 +319,11 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
     required TextEditingController controller,
     required String label,
     required String suffix,
+    FocusNode? focusNode,
   }) {
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [DecimalInputFormatter()],
       decoration: InputDecoration(
@@ -791,6 +795,13 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
               activeTrackColor: ThemeService.kRailAmber,
               onChanged: (value) {
                 setState(() => _handbrake = value);
+                // Po zapnutí přesuneme kurzor do nově zobrazeného pole
+                // pro hodnotu ruční brzdy (až po jeho vykreslení).
+                if (value) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _handbrakeForceFocusNode.requestFocus();
+                  });
+                }
               },
             ),
             if (_handbrake) ...[
@@ -799,6 +810,7 @@ class _WagonDetailScreenState extends State<WagonDetailScreen> {
                 controller: _handbrakeForceController,
                 label: 'Hodnota ruční brzdy',
                 suffix: 'kN',
+                focusNode: _handbrakeForceFocusNode,
               ),
             ],
             SwitchListTile(

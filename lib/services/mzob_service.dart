@@ -3,15 +3,22 @@ import '../models/inventory.dart';
 /// Výsledek výpočtu pro Mezinárodní zprávu o brzdění vlaku (MZOB).
 class MzobResult {
   final int wagonCount;
-  final double weight;
+
+  /// Hmotnost vlaku (t), zaokrouhlená nahoru na celé tuny.
+  final int weight;
   final double brakeWeight;
   final int lengthMeters;
   final int axleCount;
-  final double handbrakeForceKn;
+  /// Zajišťovací síla (kN), zaokrouhlená dolů na celé kN.
+  final int handbrakeForceKn;
   final int nonMetallicBlocksCount;
   final int gModeCount;
   final int pModeCount;
   final int handbrakeCount;
+
+  /// Nejvyšší dovolená rychlost vlaku (km/h) podle nejpomalejšího vozu,
+  /// `null` pokud žádný vůz nemá rychlost vyplněnou.
+  final int? maxSpeed;
   final String? note;
 
   const MzobResult({
@@ -25,6 +32,7 @@ class MzobResult {
     required this.gModeCount,
     required this.pModeCount,
     required this.handbrakeCount,
+    this.maxSpeed,
     this.note,
   });
 }
@@ -39,6 +47,11 @@ double sumWagonWeight(List<WagonNumber> wagons) {
   return total;
 }
 
+/// Brzdící váha vozu pro výpočet – vůz s příznakem R1 (brzda
+/// neupotřebitelná) se započítává hodnotou 0.
+double _effectiveBrakeWeight(WagonNumber wagon, double? value) =>
+    wagon.isBrakeUnusable ? 0 : (value ?? 0);
+
 /// Spočítá výsledek pro MZOB podle zadané hmotnosti nákladu.
 ///
 /// [gSwitchCount] (3 nebo 5) je vyžadován pouze pokud součet hmotnosti
@@ -50,7 +63,7 @@ MzobResult calculateMzob({
 }) {
   final wagonCount = wagons.length;
   final totalWagonWeight = sumWagonWeight(wagons);
-  final weight = totalWagonWeight + cargoMass;
+  final weight = (totalWagonWeight + cargoMass).ceil();
 
   double brakeWeight;
   int gModeCount;
@@ -58,14 +71,14 @@ MzobResult calculateMzob({
   String? note;
 
   if (cargoMass <= 0) {
-    brakeWeight = wagons.fold(0.0, (sum, w) => sum + (w.brakeWeightG ?? 0));
+    brakeWeight = wagons.fold(0.0, (sum, w) => sum + _effectiveBrakeWeight(w, w.brakeWeightG));
     gModeCount = 0;
     pModeCount = wagonCount;
     note = null;
   } else {
     final gross = totalWagonWeight + cargoMass;
     final totalBrakeWeightP =
-        wagons.fold(0.0, (sum, w) => sum + (w.brakeWeightP ?? 0));
+        wagons.fold(0.0, (sum, w) => sum + _effectiveBrakeWeight(w, w.brakeWeightP));
 
     if (gross < 800) {
       brakeWeight = totalBrakeWeightP;
@@ -82,8 +95,10 @@ MzobResult calculateMzob({
       final k = (gSwitchCount ?? 0).clamp(0, wagonCount);
       final gWagons = wagons.take(k);
       final pWagons = wagons.skip(k);
-      final gSum = gWagons.fold(0.0, (sum, w) => sum + (w.brakeWeightP ?? 0));
-      final pSum = pWagons.fold(0.0, (sum, w) => sum + (w.brakeWeightP ?? 0));
+      final gSum = gWagons.fold(
+          0.0, (sum, w) => sum + _effectiveBrakeWeight(w, w.brakeWeightP));
+      final pSum = pWagons.fold(
+          0.0, (sum, w) => sum + _effectiveBrakeWeight(w, w.brakeWeightP));
       brakeWeight = gSum * 0.75 + pSum;
       gModeCount = k;
       pModeCount = wagonCount - k;
@@ -96,10 +111,19 @@ MzobResult calculateMzob({
   final axleCount = wagons.fold(0, (sum, w) => sum + (w.axleCount ?? 0));
   final handbrakeForceKn = wagons
       .where((w) => w.handbrake)
-      .fold(0.0, (sum, w) => sum + (w.handbrakeForceKn ?? 0));
+      .fold(0.0, (sum, w) => sum + (w.handbrakeForceKn ?? 0))
+      .floor();
   final nonMetallicBlocksCount =
       wagons.where((w) => w.nonMetallicBlocks).length;
   final handbrakeCount = wagons.where((w) => w.handbrake).length;
+
+  // Ložený vlak se řídí rychlostí ložených vozů, prázdný rychlostí prázdných.
+  final speeds = wagons
+      .map((w) => cargoMass > 0 ? w.maxSpeedLoaded : w.maxSpeedEmpty)
+      .whereType<double>();
+  final maxSpeed = speeds.isEmpty
+      ? null
+      : speeds.reduce((a, b) => a < b ? a : b).floor();
 
   return MzobResult(
     wagonCount: wagonCount,
@@ -112,6 +136,7 @@ MzobResult calculateMzob({
     gModeCount: gModeCount,
     pModeCount: pModeCount,
     handbrakeCount: handbrakeCount,
+    maxSpeed: maxSpeed,
     note: note,
   );
 }

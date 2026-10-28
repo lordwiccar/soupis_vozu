@@ -540,20 +540,28 @@ class _InventoryListScreenState extends State<InventoryListScreen>
     );
   }
 
+  /// Řádky výpisu MZOB (popisek, hodnota) v pořadí, v jakém se zobrazují
+  /// i kopírují do schránky.
+  List<(String, String)> _mzobRows(MzobResult result) => [
+        ('Počet vozů', '${result.wagonCount}'),
+        ('Hmotnost', '${result.weight} t'),
+        ('Brzdící váha', '${formatDecimal(result.brakeWeight)} t'),
+        ('Zajišťovací síla', '${result.handbrakeForceKn} kN'),
+        ('Vozy s nekovovými špalíky', '${result.nonMetallicBlocksCount}'),
+        ('Vozy v režimu G', '${result.gModeCount}'),
+        ('Vozy v režimu P', '${result.pModeCount}'),
+        ('Počet ručních brzd', '${result.handbrakeCount}'),
+        ('Délka soupravy', '${result.lengthMeters} m'),
+        ('Počet náprav', '${result.axleCount}'),
+        ('Max. rychlost vlaku',
+            result.maxSpeed != null ? '${result.maxSpeed} km/h' : '–'),
+      ];
+
   String _buildMzobText(Inventory inventory, MzobResult result) {
-    final buffer = StringBuffer()
-      ..writeln('MZOB – ${inventory.name}')
-      ..writeln('Počet vozů v soupravě: ${result.wagonCount}')
-      ..writeln('Hmotnost: ${formatDecimal(result.weight)} t')
-      ..writeln('Brzdící váha: ${formatDecimal(result.brakeWeight)} t')
-      ..writeln('Délka soupravy: ${result.lengthMeters} m')
-      ..writeln('Počet náprav: ${result.axleCount}')
-      ..writeln(
-          'Zajišťovací síla: ${formatDecimal(result.handbrakeForceKn)} kN')
-      ..writeln('Vozy s nekovovými špalíky: ${result.nonMetallicBlocksCount}')
-      ..writeln('Vozy v režimu G: ${result.gModeCount}')
-      ..writeln('Vozy v režimu P: ${result.pModeCount}')
-      ..writeln('Ruční brzdy v soupravě: ${result.handbrakeCount}');
+    final buffer = StringBuffer()..writeln('MZOB – ${inventory.name}');
+    for (final (label, value) in _mzobRows(result)) {
+      buffer.writeln('$label: $value');
+    }
     if (result.note != null) {
       buffer.writeln('Poznámka: ${result.note}');
     }
@@ -563,39 +571,83 @@ class _InventoryListScreenState extends State<InventoryListScreen>
   Future<void> _showMzobResultDialog(
       Inventory inventory, MzobResult result) async {
     final text = _buildMzobText(inventory, result);
+    final rows = _mzobRows(result);
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Výpis pro MZOB'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Text(text,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13)),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Zavřít'),
-          ),
-          TextButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: text));
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Výpis zkopírován do schránky'),
-                    backgroundColor: Colors.green,
+      builder: (context) {
+        final dividerColor = Theme.of(context).dividerColor;
+        return AlertDialog(
+          title: const Text('Výpis pro MZOB'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Table(
+                    columnWidths: const {
+                      0: FlexColumnWidth(3),
+                      1: FlexColumnWidth(2),
+                    },
+                    defaultVerticalAlignment:
+                        TableCellVerticalAlignment.middle,
+                    border: TableBorder(
+                      horizontalInside: BorderSide(color: dividerColor),
+                    ),
+                    children: [
+                      for (final (label, value) in rows)
+                        TableRow(children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(label,
+                                style: const TextStyle(fontSize: 14)),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              value,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ]),
+                    ],
                   ),
-                );
-              }
-            },
-            child: const Text('Kopírovat'),
+                  if (result.note != null) ...[
+                    const SizedBox(height: 12),
+                    Text('Poznámka: ${result.note}',
+                        style: const TextStyle(
+                            fontSize: 13, fontStyle: FontStyle.italic)),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zavřít'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: text));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Výpis zkopírován do schránky'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Kopírovat'),
+            ),
+          ],
+        );
+      },
     );
   }
 

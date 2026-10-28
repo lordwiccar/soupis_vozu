@@ -121,6 +121,9 @@ class WagonRegistryService {
   /// Zapíše aktuální stav informací o voze do registru. Vůz v registru
   /// zůstává, i když jsou všechna pole prázdná – řádek se jen aktualizuje
   /// na "prázdný" stav, nikdy se automaticky nemaže (viz [deleteEntry]).
+  ///
+  /// [updatedAt] umožňuje zachovat původní čas změny (např. při importu);
+  /// pokud chybí, použije se aktuální čas.
   static Future<void> upsertFromWagon({
     required String number,
     required String formattedNumber,
@@ -135,6 +138,7 @@ class WagonRegistryService {
     double? length,
     int? axleCount,
     bool nonMetallicBlocks = false,
+    DateTime? updatedAt,
   }) async {
     await initDatabase();
 
@@ -145,7 +149,7 @@ class WagonRegistryService {
           'number': number,
           'formatted_number': formattedNumber,
           'notes': notes,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': (updatedAt ?? DateTime.now()).toIso8601String(),
           'weight': weight,
           'brake_weight_g': brakeWeightG,
           'brake_weight_p': brakeWeightP,
@@ -254,20 +258,29 @@ class WagonRegistryService {
     return file;
   }
 
-  /// Naimportuje záznamy z .xlsx souboru. Vozy, které v registru už
-  /// existují, se ponechají beze změny – doplní se jen dosud neznámé.
+  /// Naimportuje záznamy z .xlsx souboru. Dosud neznámé vozy se doplní
+  /// celé (i bez jakýchkoliv údajů). U vozů, které už v registru existují,
+  /// se vyplněné příznaky a poznámka nikdy nepřepisují – import je jen
+  /// doplní, pokud jsou v registru prázdné (každé zvlášť). U technických
+  /// údajů mají vyplněné hodnoty přednost před časem:
+  /// - zápis bez technických údajů existující záznam nezmění,
+  /// - zápis s technickými údaji vždy doplní záznam, který je nemá,
+  /// - mají-li technické údaje oba, rozhoduje čas poslední změny (sloupec
+  ///   "Aktualizováno") – novější zápis s odlišnými hodnotami je přepíše.
+  ///   Řádky bez platného času změny je nepřepisují.
   static Future<WagonImportResult> importFromXlsx(String filePath) async {
     final bytes = await File(filePath).readAsBytes();
     final workbook = xlsx.Excel.decodeBytes(bytes);
 
     if (workbook.tables.isEmpty) {
       return const WagonImportResult(
-          added: 0, skippedExisting: 0, invalidRows: 0);
+          added: 0, updated: 0, skippedExisting: 0, invalidRows: 0);
     }
 
     final sheet = workbook.tables[workbook.tables.keys.first]!;
 
     int added = 0;
+    int updated = 0;
     int skippedExisting = 0;
     int invalidRows = 0;
 
@@ -288,6 +301,7 @@ class WagonRegistryService {
       final lengthCell = row.length > 10 ? _cellText(row[10]) : '';
       final axleCountCell = row.length > 11 ? _cellText(row[11]) : '';
       final nonMetallicBlocksCell = row.length > 12 ? _cellText(row[12]) : '';
+      final updatedAtCell = row.length > 13 ? _cellText(row[13]) : '';
 
       final digits = numberCell.replaceAll(RegExp(r'[^0-9]'), '');
       if (digits.length != 12) {
@@ -313,9 +327,9 @@ class WagonRegistryService {
       final axleCount = int.tryParse(axleCountCell.trim());
       final nonMetallicBlocks =
           nonMetallicBlocksCell.trim().toLowerCase() == 'ano';
+      final importedUpdatedAt = DateTime.tryParse(updatedAtCell.trim());
 
-      final hasInfo = notes.trim().isNotEmpty ||
-          weight != null ||
+      final hasTechnicalInfo = weight != null ||
           brakeWeightG != null ||
           brakeWeightP != null ||
           handbrake ||
@@ -324,36 +338,103 @@ class WagonRegistryService {
           length != null ||
           axleCount != null ||
           nonMetallicBlocks;
-      if (!hasInfo) continue;
 
-      // "Ponechat existující" se vztahuje jen na vozy, které už mají
-      // skutečné info – "prázdný" záznam v registru import klidně doplní.
       final existing = await getEntry(digits);
-      if (existing != null && existing.hasInfo) {
+      if (existing == null) {
+        await upsertFromWagon(
+          number: digits,
+          formattedNumber: UicValidator.formatUicNumber(digits),
+          notes: notes,
+          weight: weight,
+          brakeWeightG: brakeWeightG,
+          brakeWeightP: brakeWeightP,
+          handbrake: handbrake,
+          handbrakeForceKn: handbrakeForceKn,
+          maxSpeedEmpty: maxSpeedEmpty,
+          maxSpeedLoaded: maxSpeedLoaded,
+          length: length,
+          axleCount: axleCount,
+          nonMetallicBlocks: nonMetallicBlocks,
+          updatedAt: importedUpdatedAt,
+        );
+        added++;
+        continue;
+      }
+
+      // Příznaky a poznámka se nikdy nepřepisují – import je smí jen
+      // doplnit, pokud jsou v registru prázdné (každé zvlášť).
+      final existingParsed = WagonNumber.parseNotes(existing.notes);
+      final fillFlags = existingParsed.flags.isEmpty && flags.isNotEmpty;
+      final fillText =
+          existingParsed.text.trim().isEmpty && textCell.trim().isNotEmpty;
+      final notesChanged = fillFlags || fillText;
+      final mergedNotes = notesChanged
+          ? WagonNumber.composeNotes(
+              fillFlags ? flags : existingParsed.flags,
+              fillText ? textCell.trim() : existingParsed.text,
+            )
+          : existing.notes;
+
+      // Technické údaje: vyplněné mají přednost před časem; mají-li je
+      // oba záznamy, přepíše je jen novější zápis s odlišnými hodnotami.
+      bool applyTechnical;
+      if (!hasTechnicalInfo) {
+        applyTechnical = false;
+      } else if (!existing.hasTechnicalInfo) {
+        applyTechnical = true;
+      } else {
+        final isNewer = importedUpdatedAt != null &&
+            importedUpdatedAt.isAfter(existing.updatedAt);
+        final isSame = existing.weight == weight &&
+            existing.brakeWeightG == brakeWeightG &&
+            existing.brakeWeightP == brakeWeightP &&
+            existing.handbrake == handbrake &&
+            existing.handbrakeForceKn ==
+                (handbrake ? handbrakeForceKn : null) &&
+            existing.maxSpeedEmpty == maxSpeedEmpty &&
+            existing.maxSpeedLoaded == maxSpeedLoaded &&
+            existing.length == length &&
+            existing.axleCount == axleCount &&
+            existing.nonMetallicBlocks == nonMetallicBlocks;
+        applyTechnical = isNewer && !isSame;
+      }
+
+      if (!applyTechnical && !notesChanged) {
         skippedExisting++;
         continue;
       }
 
+      // Čas změny se nikdy neposune do minulosti.
+      var updatedAt = importedUpdatedAt;
+      if (updatedAt == null || updatedAt.isBefore(existing.updatedAt)) {
+        updatedAt = existing.updatedAt;
+      }
+
       await upsertFromWagon(
         number: digits,
-        formattedNumber: UicValidator.formatUicNumber(digits),
-        notes: notes,
-        weight: weight,
-        brakeWeightG: brakeWeightG,
-        brakeWeightP: brakeWeightP,
-        handbrake: handbrake,
-        handbrakeForceKn: handbrakeForceKn,
-        maxSpeedEmpty: maxSpeedEmpty,
-        maxSpeedLoaded: maxSpeedLoaded,
-        length: length,
-        axleCount: axleCount,
-        nonMetallicBlocks: nonMetallicBlocks,
+        formattedNumber: existing.formattedNumber,
+        notes: mergedNotes,
+        weight: applyTechnical ? weight : existing.weight,
+        brakeWeightG: applyTechnical ? brakeWeightG : existing.brakeWeightG,
+        brakeWeightP: applyTechnical ? brakeWeightP : existing.brakeWeightP,
+        handbrake: applyTechnical ? handbrake : existing.handbrake,
+        handbrakeForceKn:
+            applyTechnical ? handbrakeForceKn : existing.handbrakeForceKn,
+        maxSpeedEmpty: applyTechnical ? maxSpeedEmpty : existing.maxSpeedEmpty,
+        maxSpeedLoaded:
+            applyTechnical ? maxSpeedLoaded : existing.maxSpeedLoaded,
+        length: applyTechnical ? length : existing.length,
+        axleCount: applyTechnical ? axleCount : existing.axleCount,
+        nonMetallicBlocks:
+            applyTechnical ? nonMetallicBlocks : existing.nonMetallicBlocks,
+        updatedAt: updatedAt,
       );
-      added++;
+      updated++;
     }
 
     return WagonImportResult(
       added: added,
+      updated: updated,
       skippedExisting: skippedExisting,
       invalidRows: invalidRows,
     );

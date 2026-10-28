@@ -118,9 +118,11 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
     required TextEditingController controller,
     required String label,
     required String suffix,
+    bool autofocus = false,
   }) {
     return TextField(
       controller: controller,
+      autofocus: autofocus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [DecimalInputFormatter()],
       decoration: InputDecoration(
@@ -169,6 +171,9 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
     final handbrakeForceController =
         TextEditingController(text: formatDecimal(entry.handbrakeForceKn));
     bool handbrake = entry.handbrake;
+    // Pole pro hodnotu ruční brzdy dostane fokus jen po ručním zapnutí
+    // přepínače, ne při otevření dialogu.
+    bool focusHandbrakeForce = false;
     bool nonMetallicBlocks = entry.nonMetallicBlocks;
 
     final saved = await showDialog<bool>(
@@ -293,7 +298,10 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
                   value: handbrake,
                   activeTrackColor: ThemeService.kRailAmber,
                   onChanged: (value) {
-                    setDialogState(() => handbrake = value);
+                    setDialogState(() {
+                      handbrake = value;
+                      focusHandbrakeForce = value;
+                    });
                   },
                 ),
                 if (handbrake) ...[
@@ -302,6 +310,7 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
                     controller: handbrakeForceController,
                     label: 'Hodnota ruční brzdy',
                     suffix: 'kN',
+                    autofocus: focusHandbrakeForce,
                   ),
                 ],
                 SwitchListTile(
@@ -436,7 +445,9 @@ class _WagonDatabaseScreenState extends State<WagonDatabaseScreen> {
             title: const Text('Import dokončen'),
             content: Text(
               'Přidáno nových vozů: ${importResult.added}\n'
-              'Přeskočeno (už existují): ${importResult.skippedExisting}\n'
+              'Aktualizováno (doplněné či novější údaje): ${importResult.updated}\n'
+              'Přeskočeno (beze změny nebo starší): '
+              '${importResult.skippedExisting}\n'
               'Neplatných řádků: ${importResult.invalidRows}',
             ),
             actions: [

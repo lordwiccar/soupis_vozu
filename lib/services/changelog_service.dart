@@ -6,6 +6,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// repozitáře.
 const List<Map<String, dynamic>> changelogEntries = [
   {
+    'version': '1.1.1',
+    'date': '28. 10. 2026',
+    'notes': [
+      'Výpis MZOB je přehlednější – údaje jsou ve dvou sloupcích '
+          'a v novém pořadí.',
+      'Výpis MZOB nově ukazuje maximální rychlost vlaku podle '
+          'nejpomalejšího vozu v soupisu.',
+      'Hmotnost vlaku se ve výpisu MZOB zaokrouhluje nahoru a zajišťovací '
+          'síla dolů na celá čísla.',
+      'Vozy s příznakem R1 (brzda neupotřebitelná) se do brzdící váhy '
+          've výpisu MZOB nezapočítávají.',
+      'Po zapnutí přepínače Ruční brzda v detailu vozu i v databázi vozů '
+          'skočí kurzor rovnou do pole pro její hodnotu.',
+      'Import databáze vozů nově aktualizuje technické údaje u vozů, které '
+          'už v databázi jsou, pokud je importovaný záznam novější. '
+          'Vyplněné příznaky a poznámky se nikdy nepřepíšou, prázdné se '
+          'doplní. Importují se i vozy bez údajů.',
+    ],
+  },
+  {
     'version': '1.1.0',
     'date': '19. 9. 2026',
     'notes': [
