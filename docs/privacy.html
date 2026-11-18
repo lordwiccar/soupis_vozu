@@ -27,7 +27,7 @@
 <body>
 
 <h1>Zásady ochrany osobních údajů</h1>
-<p class="updated">Aplikace Soupis vozů · White Whale Media · Aktualizováno: 9. 8. 2026</p>
+<p class="updated">Aplikace Soupis vozů · White Whale Media · Aktualizováno: 18. 11. 2026</p>
 
 <p>
 Tyto zásady popisují, jaká data aplikace <strong>Soupis vozů</strong> zpracovává a jak s nimi nakládá.
@@ -38,6 +38,12 @@ Aplikaci provozuje White Whale Media. V případě dotazů nás kontaktujte na
 <h2>Jaká data aplikace zpracovává</h2>
 <ul>
   <li>
+    <strong>Údaje Google účtu.</strong> K používání aplikace je nutné přihlášení Google účtem.
+    Aplikace přitom získá vaše jméno, e-mailovou adresu, adresu profilové fotografie a jedinečný
+    identifikátor účtu. Slouží výhradně k přihlášení a k tomu, aby vaše data byla uložena
+    odděleně pod vaším účtem a dostupná jen vám. Heslo k Google účtu aplikace nikdy nezíská.
+  </li>
+  <li>
     <strong>Fotografie vozů (kamera).</strong> Kamera se používá výhradně ke skenování
     identifikačních čísel železničních vozů. Pořízené snímky se buď zpracují přímo
     v zařízení (on-device OCR), nebo — pokud si v nastavení aktivně zapnete a nakonfigurujete
@@ -46,41 +52,77 @@ Aplikaci provozuje White Whale Media. V případě dotazů nás kontaktujte na
     zpracování snímku vztahují zásady ochrany osobních údajů daného poskytovatele
     (<a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI</a>,
     <a href="https://www.anthropic.com/legal/privacy" target="_blank" rel="noopener">Anthropic</a>).
-    Fotografie se nikam jinam neodesílají a autor aplikace k nim nemá přístup.
+    Fotografie se neukládají do cloudu, nikam jinam se neodesílají a autor aplikace k nim nemá přístup.
   </li>
   <li>
     <strong>Poloha.</strong> Aplikace může se souhlasem uživatele zjistit aktuální polohu
     (pouze při aktivním používání aplikace, nikdy na pozadí) a přibližný název místa
-    uložit u záznamu soupisu jako informaci o tom, kde byl soupis pořízen. Poloha se ukládá
-    pouze lokálně v databázi v zařízení.
+    uložit u záznamu soupisu jako informaci o tom, kde byl soupis pořízen. Přesné souřadnice
+    se neukládají; název místa se ukládá spolu se soupisem (viz níže).
   </li>
   <li>
     <strong>Kontakty pro sdílení.</strong> Jména a e-mailové adresy, které si sami zadáte
-    pro účely odeslání soupisu e-mailem, se ukládají lokálně v zařízení, aby je nebylo nutné
-    zadávat opakovaně.
+    pro účely odeslání soupisu e-mailem, se ukládají, aby je nebylo nutné zadávat opakovaně.
   </li>
   <li>
-    <strong>Data o vozech a soupisech</strong>, která ručně zadáte nebo naskenujete, se ukládají
-    lokálně v databázi v zařízení.
+    <strong>Data o vozech a soupisech</strong>, která ručně zadáte nebo naskenujete.
+  </li>
+  <li>
+    <strong>Nastavení aplikace</strong> – motiv, režim skenování, zvolený AI model a volitelně
+    zadaný API klíč pro AI rozpoznávání.
   </li>
 </ul>
 
 <h2>Kde se data ukládají</h2>
 <p>
-Veškerá data (soupisy, databáze vozů, kontakty, nastavení) se ukládají výhradně lokálně na
-vašem zařízení. Aplikace neprovozuje žádný vlastní server a data nesbírá ani neukládá na
-straně White Whale Media. Volitelně zadaný API klíč pro AI rozpoznávání se ukládá zašifrovaně
-přímo v zařízení (Android Keystore / šifrované úložiště).
+Data (soupisy, databáze vozů, kontakty, nastavení) se ukládají v databázi ve vašem zařízení
+a zároveň se pod vaším Google účtem zálohují do cloudové databáze
+<strong>Google Cloud Firestore</strong> (služba Firebase), aby byla dostupná na všech vašich
+zařízeních a nepřišli jste o ně při ztrátě nebo výměně telefonu.
+</p>
+<p>
+<strong>Cloudová databáze běží výhradně na serverech v Evropské unii</strong> – v evropské
+multiregionální lokaci <code>eur3</code> (datová centra Google v Belgii a Nizozemsku).
+Data jsou při přenosu i uložení šifrována a pravidla databáze zajišťují, že k datům
+přihlášeného účtu má z aplikace přístup pouze tento účet. Autor aplikace má jako správce
+cloudového projektu technickou možnost k databázi přistoupit, vaše data však nijak nepoužívá,
+neprohlíží ani nesdílí; pracuje s nimi jen na vaši žádost (např. při smazání účtu na žádost e-mailem).
+</p>
+<p>
+Přihlášení zajišťuje služba <strong>Firebase Authentication</strong>. Ta není vázaná na
+konkrétní region, a údaje účtu potřebné k přihlášení (jméno, e-mail, identifikátor účtu) proto
+může Google zpracovávat i mimo EU, zejména v USA. Takový přenos probíhá na základě rámce
+EU–US Data Privacy Framework a standardních smluvních doložek schválených Evropskou komisí.
+Data soupisů, vozů, kontaktů a nastavení se mimo EU neukládají.
+</p>
+<p>
+Zpracovatelem dat je Google (Google Ireland Limited / Google LLC) podle
+<a href="https://firebase.google.com/terms/data-processing-terms" target="_blank" rel="noopener">podmínek zpracování dat Firebase</a>
+a <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">zásad ochrany soukromí Google</a>.
+Volitelně zadaný API klíč pro AI rozpoznávání je v zařízení uložen zašifrovaně (Android
+Keystore / šifrované úložiště) a pro synchronizaci mezi zařízeními se ukládá i do vaší
+cloudové databáze, kam má přístup pouze váš účet.
+</p>
+
+<h2>Právní základ a doba uložení</h2>
+<p>
+Data zpracováváme, protože jsou nezbytná pro poskytování funkcí aplikace, o které jste
+požádali – přihlášení, ukládání a zálohování vašich dat (čl. 6 odst. 1 písm. b) GDPR).
+Data uchováváme po dobu existence vašeho účtu v aplikaci; po smazání účtu jsou odstraněna
+(viz níže).
 </p>
 
 <h2>Sdílení dat s třetími stranami</h2>
-<p>
-Data se sdílí s třetí stranou pouze ve dvou případech, a vždy jen na váš přímý pokyn:
-</p>
+<p>Data se předávají třetím stranám pouze v těchto případech:</p>
 <ul>
-  <li>Odesláním soupisu e-mailem přes e-mailového klienta ve vašem zařízení.</li>
+  <li>Google (Firebase) jako zpracovatel – přihlášení a ukládání vašich dat v cloudu, viz výše.</li>
+  <li>Odesláním soupisu e-mailem přes e-mailového klienta ve vašem zařízení (na váš pokyn).</li>
   <li>Odesláním fotografie ke zpracování poskytovateli OpenAI nebo Anthropic, pokud si tuto
     volitelnou funkci sami zapnete a nastavíte vlastní API klíč.</li>
+  <li>Aplikace stahuje písma ze služby Google Fonts (servery Google). Při stažení se Googlu
+    předá IP adresa zařízení; žádná vaše data se neodesílají.</li>
+  <li>Převod polohy na název místa provádí systémová služba Android (geokódování), která
+    k tomu může použít servery Google.</li>
 </ul>
 <p>Aplikace neobsahuje reklamy, analytické ani sledovací nástroje třetích stran a data nikomu neprodává.</p>
 
@@ -88,13 +130,53 @@ Data se sdílí s třetí stranou pouze ve dvou případech, a vždy jen na vá�
 <ul>
   <li><strong>Kamera</strong> – ke skenování čísel vozů.</li>
   <li><strong>Poloha (jen při používání aplikace)</strong> – k zaznamenání místa pořízení soupisu.</li>
-  <li><strong>Internet</strong> – k volitelnému odeslání fotografie AI poskytovateli.</li>
+  <li><strong>Internet</strong> – k přihlášení, zálohování a synchronizaci dat v cloudu, stažení
+    písem a k volitelnému odeslání fotografie AI poskytovateli.</li>
 </ul>
 
-<h2>Smazání dat</h2>
+<h2>Smazání účtu a dat</h2>
 <p>
-Veškerá lokálně uložená data (soupisy, databáze vozů, kontakty, uložený API klíč) odstraníte
-odinstalováním aplikace nebo vymazáním dat aplikace v nastavení systému Android.
+Účet a všechna data můžete kdykoliv nevratně smazat přímo v aplikaci:
+<strong>Nastavení → O aplikaci → Smazat účet a data</strong>. Smažou se všechna data v cloudu,
+váš účet v aplikaci i data v zařízení.
+</p>
+<p>
+Pokud aplikaci již nemáte nainstalovanou, můžete o smazání účtu a všech dat požádat e-mailem
+na <a href="mailto:lord.wiccar@gmail.com?subject=Soupis%20voz%C5%AF%20%E2%80%93%20smaz%C3%A1n%C3%AD%20%C3%BA%C4%8Dtu">lord.wiccar@gmail.com</a>
+z adresy Google účtu, kterým jste se přihlašovali, s předmětem „Soupis vozů – smazání účtu“.
+Účet i data smažeme nejpozději do 30 dnů a o smazání vás informujeme. Žádná data si
+neponecháváme.
+</p>
+<p>
+Odhlášením (Nastavení → O aplikaci → Odhlásit se), odinstalováním aplikace nebo vymazáním dat
+aplikace v systému Android se smažou pouze data v zařízení; data v cloudu zůstanou zachována
+pro další přihlášení.
+</p>
+
+<h2>Vaše práva</h2>
+<p>
+Podle GDPR máte právo na přístup ke svým údajům, jejich opravu, výmaz, omezení zpracování,
+přenositelnost (data můžete kdykoliv exportovat – databázi vozů do souboru .xlsx, soupisy
+e-mailem) a právo vznést námitku. Svá práva můžete uplatnit na výše uvedeném e-mailu. Máte také
+právo podat stížnost u dozorového úřadu – Úřadu pro ochranu osobních údajů
+(<a href="https://uoou.gov.cz" target="_blank" rel="noopener">uoou.gov.cz</a>).
+</p>
+
+<h2>Open source knihovny</h2>
+<p>
+Aplikace je postavena na frameworku <strong>Flutter</strong> a využívá open source knihovny
+třetích stran, mimo jiné: firebase_core, firebase_auth, cloud_firestore, google_sign_in,
+google_mlkit_text_recognition, camera, permission_handler, sqflite, path, path_provider,
+shared_preferences, flutter_secure_storage, http, geolocator, geocoding, url_launcher,
+share_plus, clipboard, intl, google_fonts, excel, file_picker, lottie, flutter_native_splash
+a cupertino_icons. Knihovny jsou šířeny pod licencemi BSD, MIT, Apache 2.0 a dalšími
+open source licencemi.
+</p>
+<p>
+Úplný seznam všech použitých knihoven včetně plného znění jejich licencí najdete přímo
+v aplikaci: <strong>Nastavení → O aplikaci → Licence open source knihoven</strong>.
+Rozpoznávání textu v zařízení využívá Google ML Kit, na který se vztahují
+<a href="https://developers.google.com/ml-kit/terms" target="_blank" rel="noopener">podmínky ML Kit</a>.
 </p>
 
 <h2>Děti</h2>
