@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'settings_sync.dart';
 
 class ThemeService {
   // --- Industrial Railway Color Palette ---
@@ -42,6 +43,7 @@ class ThemeService {
       default:               themeIndex = 0;
     }
     await prefs.setInt(_themeKey, themeIndex);
+    await SettingsSync.markChanged();
   }
 
   // Získání názvu tématu pro zobrazení

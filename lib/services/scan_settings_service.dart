@@ -1,6 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'settings_sync.dart';
+
 enum ScanMode { quick, quality }
 
 enum AiProvider { openai, claude }
@@ -25,6 +27,7 @@ class ScanSettingsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
         _modeKey, mode == ScanMode.quality ? 'quality' : 'quick');
+    await SettingsSync.markChanged();
   }
 
   static Future<AiProvider?> getAiProvider() async {
@@ -43,6 +46,7 @@ class ScanSettingsService {
       await prefs.setString(
           _providerKey, provider == AiProvider.openai ? 'openai' : 'claude');
     }
+    await SettingsSync.markChanged();
   }
 
   static Future<String?> getApiKey() async {
@@ -55,5 +59,6 @@ class ScanSettingsService {
     } else {
       await _storage.write(key: _apiKeyKey, value: key);
     }
+    await SettingsSync.markChanged();
   }
 }

@@ -1,0 +1,100 @@
+{
+  "project_info": {
+    "project_number": "618095206925",
+    "project_id": "databaze-vozu",
+    "storage_bucket": "databaze-vozu.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:618095206925:android:acc84529c895c7be982b44",
+        "android_client_info": {
+          "package_name": "media.whitewhale.soupisvozu"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "618095206925-7jffs57ss2b81s2pe05a6fh9ifl29ror.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "media.whitewhale.soupisvozu",
+            "certificate_hash": "1d9d484f4ba8d77a69fe90fc8d5656a088e03034"
+          }
+        },
+        {
+          "client_id": "618095206925-qekgnj35f3ctb3e9lnhqvv5jscj91p9q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "media.whitewhale.soupisvozu",
+            "certificate_hash": "f00b965211392b3ca8f0afb3e1f740d466d1c3b3"
+          }
+        },
+        {
+          "client_id": "618095206925-sh76agts7rv1ncpc685haegkjjhadp9g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "media.whitewhale.soupisvozu",
+            "certificate_hash": "e70f05be73e2f0bcf730895e644dd7eb14c0befa"
+          }
+        },
+        {
+          "client_id": "618095206925-drh154p53gh5uihvmmeufmaajdjg15sp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE9KJ6mAGLxxrlGBhzA6X90kuUQZXhcwM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "618095206925-drh154p53gh5uihvmmeufmaajdjg15sp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:618095206925:android:1955fbe8537989b9982b44",
+        "android_client_info": {
+          "package_name": "media.whitewhale.soupisvozu.debug"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "618095206925-28ctcjl7isjrll7rco3tim888th5trfi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "media.whitewhale.soupisvozu.debug",
+            "certificate_hash": "1d9d484f4ba8d77a69fe90fc8d5656a088e03034"
+          }
+        },
+        {
+          "client_id": "618095206925-drh154p53gh5uihvmmeufmaajdjg15sp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAE9KJ6mAGLxxrlGBhzA6X90kuUQZXhcwM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "618095206925-drh154p53gh5uihvmmeufmaajdjg15sp.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

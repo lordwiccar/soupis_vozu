@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"databaze-vozu","appId":"1:618095206925:android:acc84529c895c7be982b44","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"databaze-vozu","configurations":{"android":"1:618095206925:android:acc84529c895c7be982b44"}}}}}}

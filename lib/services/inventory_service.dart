@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/inventory.dart';
+import 'cloud_sync_service.dart';
 import 'wagon_registry_service.dart';
 
 class InventoryService {
@@ -77,8 +78,7 @@ class InventoryService {
     }
     if (oldVersion < 3) {
       // Technické údaje o voze (hmotnost, brzdící váhy, ruční brzda, rychlost, délka)
-      await db
-          .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN weight REAL');
+      await db.execute('ALTER TABLE $_wagonNumberTable ADD COLUMN weight REAL');
       await db.execute(
           'ALTER TABLE $_wagonNumberTable ADD COLUMN brake_weight_g REAL');
       await db.execute(
@@ -87,10 +87,9 @@ class InventoryService {
           'ALTER TABLE $_wagonNumberTable ADD COLUMN handbrake INTEGER NOT NULL DEFAULT 0');
       await db.execute(
           'ALTER TABLE $_wagonNumberTable ADD COLUMN handbrake_kn REAL');
-      await db.execute(
-          'ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed REAL');
       await db
-          .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN length REAL');
+          .execute('ALTER TABLE $_wagonNumberTable ADD COLUMN max_speed REAL');
+      await db.execute('ALTER TABLE $_wagonNumberTable ADD COLUMN length REAL');
     }
     if (oldVersion < 4) {
       // Rychlost se dělí na "prázdný" a "ložený" stav vozu; přidávají se
@@ -129,6 +128,7 @@ class InventoryService {
         'location': location,
       },
     );
+    await _pushInventory(inventoryId);
 
     return inventoryId;
   }
@@ -425,7 +425,8 @@ class InventoryService {
     }
   }
 
-  // Aktualizace poslední změny soupisu
+  // Aktualizace poslední změny soupisu – volá se po každé změně soupisu
+  // nebo jeho vozů, a proto zároveň odesílá aktuální stav soupisu do cloudu.
   static Future<void> updateLastModified(String inventoryId) async {
     await initDatabase();
 
@@ -437,6 +438,7 @@ class InventoryService {
       where: 'id = ?',
       whereArgs: [inventoryId],
     );
+    await _pushInventory(inventoryId);
   }
 
   // Aktualizace názvu soupisu
@@ -453,6 +455,7 @@ class InventoryService {
       where: 'id = ?',
       whereArgs: [inventoryId],
     );
+    await _pushInventory(inventoryId);
   }
 
   // Smazání konkrétního vozu ze soupisu
@@ -465,10 +468,101 @@ class InventoryService {
       where: 'inventory_id = ? AND number = ?',
       whereArgs: [inventoryId, wagonNumber],
     );
+    await updateLastModified(inventoryId);
   }
 
   // Smazání soupisu
   static Future<void> deleteInventory(String inventoryId) async {
+    await deleteLocal(inventoryId);
+    CloudSyncService.pushDeleted(CloudSyncService.inventories, inventoryId);
+  }
+
+  // ─── SYNCHRONIZACE S CLOUDEM (viz CloudSyncService) ─────────────────────
+  //
+  // Soupis se v cloudu ukládá jako jeden dokument: řádek soupisu a pod
+  // klíčem 'wagons' seznam řádků jeho vozů.
+
+  static Future<void> _pushInventory(String inventoryId) async {
+    final data = await getSyncData(inventoryId);
+    if (data == null) return;
+    CloudSyncService.pushDoc(CloudSyncService.inventories, inventoryId, data,
+        DateTime.parse(data['last_modified'] as String));
+  }
+
+  /// Čas poslední změny každého soupisu podle ID.
+  static Future<Map<String, DateTime>> getSyncStamps() async {
+    await initDatabase();
+    final rows = await _database!
+        .query(_inventoryTable, columns: ['id', 'last_modified']);
+    return {
+      for (final row in rows)
+        row['id'] as String: DateTime.parse(row['last_modified'] as String),
+    };
+  }
+
+  static Future<Map<String, dynamic>?> getSyncData(String inventoryId) async {
+    await initDatabase();
+    final rows = await _database!.query(
+      _inventoryTable,
+      where: 'id = ?',
+      whereArgs: [inventoryId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+
+    final wagons = await _database!.query(
+      _wagonNumberTable,
+      where: 'inventory_id = ?',
+      whereArgs: [inventoryId],
+      orderBy: 'order_number ASC',
+    );
+    return {
+      ...rows.first,
+      'wagons': [
+        for (final wagon in wagons)
+          Map<String, dynamic>.of(wagon)
+            ..remove('id')
+            ..remove('inventory_id'),
+      ],
+    };
+  }
+
+  /// Zapíše soupis stažený z cloudu včetně jeho vozů (bez odeslání zpět).
+  static Future<void> applyRemote(
+      String inventoryId, Map<String, dynamic> data, DateTime updatedAt) async {
+    await initDatabase();
+    final wagons = (data['wagons'] as List<dynamic>? ?? const [])
+        .map((wagon) => Map<String, dynamic>.from(wagon as Map));
+
+    await _database!.transaction((txn) async {
+      await txn.insert(
+        _inventoryTable,
+        {
+          'id': inventoryId,
+          'name': data['name'],
+          'created_at': data['created_at'],
+          'last_modified': updatedAt.toLocal().toIso8601String(),
+          'notes': data['notes'],
+          'location': data['location'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete(
+        _wagonNumberTable,
+        where: 'inventory_id = ?',
+        whereArgs: [inventoryId],
+      );
+      for (final wagon in wagons) {
+        await txn.insert(_wagonNumberTable, {
+          ...wagon,
+          'inventory_id': inventoryId,
+        });
+      }
+    });
+  }
+
+  /// Smaže soupis jen lokálně (smazání přišlo z cloudu).
+  static Future<void> deleteLocal(String inventoryId) async {
     await initDatabase();
 
     await _database!.delete(
@@ -482,6 +576,13 @@ class InventoryService {
       where: 'id = ?',
       whereArgs: [inventoryId],
     );
+  }
+
+  /// Smaže všechny lokální soupisy (odhlášení / změna účtu).
+  static Future<void> clearAll() async {
+    await initDatabase();
+    await _database!.delete(_wagonNumberTable);
+    await _database!.delete(_inventoryTable);
   }
 
   // Uzavření databáze

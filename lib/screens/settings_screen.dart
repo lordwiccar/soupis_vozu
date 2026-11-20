@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
+import '../services/appearance_service.dart';
 import '../services/theme_service.dart';
 import '../services/scan_settings_service.dart';
 import '../services/tutorial_target_registry.dart';
@@ -9,6 +12,7 @@ import 'contacts_screen.dart';
 import 'wagon_database_screen.dart';
 import '../widgets/adaptive/fold_info.dart';
 import '../widgets/changelog_dialog.dart';
+import '../widgets/scanned_wagon_row.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
@@ -39,6 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   // Databáze vozů
   int _wagonRegistryCount = 0;
 
+  // Vzhled výpisu vozů při skenování
+  int _scanFontStep = 0;
+  bool _highlightLast4 = false;
+
   final _databaseTileKey = GlobalKey();
   final _contactsTileKey = GlobalKey();
 
@@ -49,6 +57,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadThemePreference();
     _loadScanSettings();
     _loadWagonRegistryCount();
+    _loadAppearance();
 
     TutorialTargetRegistry.registerTabController(
         'settings.tabs', _tabController);
@@ -104,6 +113,17 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _loadAppearance() async {
+    final step = await AppearanceService.getScanFontStep();
+    final highlight = await AppearanceService.getHighlightLast4();
+    if (mounted) {
+      setState(() {
+        _scanFontStep = step;
+        _highlightLast4 = highlight;
+      });
+    }
+  }
+
   Future<void> _loadWagonRegistryCount() async {
     final count = await WagonRegistryService.count();
     if (mounted) setState(() => _wagonRegistryCount = count);
@@ -115,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     (Icons.contacts_outlined, 'Adresář'),
     (Icons.document_scanner_outlined, 'Skenování'),
     (Icons.storage_outlined, 'Databáze'),
-    (Icons.palette_outlined, 'Motiv'),
+    (Icons.palette_outlined, 'Vzhled'),
     (Icons.info_outline, 'O aplikaci'),
   ];
 
@@ -495,19 +515,198 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  // ─── MOTIV ──────────────────────────────────────────────────────────────────
+  // ─── VZHLED ─────────────────────────────────────────────────────────────────
 
   Widget _buildThemeTab() {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _buildSectionLabel('MOTIV'),
         _buildSettingsTile(
           icon: _isDarkMode ? Icons.dark_mode : Icons.light_mode,
           title: 'Nastavení motivu',
           subtitle: _getThemeDisplayName(),
           onTap: _showThemeSelectionDialog,
         ),
+        const SizedBox(height: 16),
+        _buildSectionLabel('VÝPIS VOZŮ PŘI SKENOVÁNÍ'),
+        _buildScanFontCard(),
       ],
+    );
+  }
+
+  /// Volba velikosti čísel ve výpisu vozů na obrazovce skenování, se živým
+  /// náhledem řádků výpisu (stejný widget jako na obrazovce skenování).
+  Widget _buildScanFontCard() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final stepCount = AppearanceService.scanFontSizes.length;
+
+    return Card(
+      color: isDark ? ThemeService.kRailCharcoal : Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.format_size, color: ThemeService.kRailAmber),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Velikost čísel vozů',
+                          style: theme.textTheme.titleSmall),
+                      Text('Výpis vozů na obrazovce skenování',
+                          style: theme.textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                for (var i = 0; i < stepCount; i++)
+                  Expanded(
+                    child: Padding(
+                      padding:
+                          EdgeInsets.only(right: i < stepCount - 1 ? 6 : 0),
+                      child: _buildFontStepButton(i, isDark),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Náhled – výpis na skenování je vždy tmavý, bez ohledu na motiv.
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 2),
+              decoration: BoxDecoration(
+                color: ThemeService.kRailBlack,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      'NÁHLED',
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                  ScannedWagonRow(
+                    number: '335478431125',
+                    isValid: true,
+                    isComplete: true,
+                    hasDefect: true,
+                    fontStep: _scanFontStep,
+                    highlightLast4: _highlightLast4,
+                  ),
+                  ScannedWagonRow(
+                    number: '315453561070',
+                    isValid: true,
+                    isComplete: false,
+                    hasDefect: false,
+                    fontStep: _scanFontStep,
+                    highlightLast4: _highlightLast4,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('Zvýraznit poslední čtyřčíslí',
+                  style: theme.textTheme.bodyMedium),
+              value: _highlightLast4,
+              activeThumbColor: ThemeService.kRailAmber,
+              onChanged: (v) async {
+                setState(() => _highlightLast4 = v);
+                await AppearanceService.setHighlightLast4(v);
+              },
+            ),
+            Text(
+              'Když se číslo na displej nevejde, zkrátí se zleva – poslední '
+              'čtyřčíslí a stavové ikonky zůstanou vždy vidět.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontStepButton(int step, bool isDark) {
+    final selected = step == _scanFontStep;
+    final theme = Theme.of(context);
+    final borderColor = selected
+        ? ThemeService.kRailAmber
+        : (isDark ? ThemeService.kRailSteel : Colors.black26);
+    return Material(
+      color: selected
+          ? ThemeService.kRailAmber.withValues(alpha: 0.14)
+          : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: borderColor, width: selected ? 1.5 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () async {
+          setState(() => _scanFontStep = step);
+          await AppearanceService.setScanFontStep(step);
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(2, 8, 2, 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Ukázka velikosti je ve fixní výšce, aby popisky všech
+              // tlačítek zůstaly na jedné úrovni.
+              SizedBox(
+                height: 30,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '123',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: AppearanceService.scanFontSizes[step],
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                        color: theme.textTheme.bodyLarge?.color,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  AppearanceService.scanFontLabels[step],
+                  maxLines: 1,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 11,
+                    color: selected ? ThemeService.kRailAmber : null,
+                    fontWeight: selected ? FontWeight.w700 : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -517,6 +716,30 @@ class _SettingsScreenState extends State<SettingsScreen>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _buildSettingsTile(
+          icon: Icons.cloud_sync_outlined,
+          title: 'Synchronizovat nyní',
+          subtitle: _syncing
+              ? 'Probíhá synchronizace…'
+              : 'Účet ${AuthService.currentUser?.email ?? ''} – data se '
+                  'zálohují automaticky',
+          onTap: _syncing ? () {} : _syncNow,
+        ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.logout,
+          title: 'Odhlásit se',
+          subtitle: 'Data zůstanou v cloudu, z tohoto zařízení se smažou',
+          onTap: _signOut,
+        ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.delete_forever_outlined,
+          title: 'Smazat účet a data',
+          subtitle: 'Nevratně smaže účet i všechna data v cloudu a v zařízení',
+          onTap: _deleteAccount,
+        ),
+        const SizedBox(height: 8),
         _buildSettingsTile(
           icon: Icons.info_outline,
           title: 'O aplikaci',
@@ -546,6 +769,18 @@ class _SettingsScreenState extends State<SettingsScreen>
           trailing: const Icon(Icons.open_in_new, size: 16),
           onTap: _openPrivacyPolicy,
         ),
+        const SizedBox(height: 8),
+        _buildSettingsTile(
+          icon: Icons.description_outlined,
+          title: 'Licence open source knihoven',
+          subtitle: 'Knihovny třetích stran použité v aplikaci a jejich licence',
+          onTap: () => showLicensePage(
+            context: context,
+            applicationName: 'Soupis vozů',
+            applicationVersion: ChangelogService.currentVersion,
+            applicationLegalese: '© 2026 White Whale Media',
+          ),
+        ),
         if (widget.onReplayTutorial != null) ...[
           const SizedBox(height: 8),
           _buildSettingsTile(
@@ -557,6 +792,109 @@ class _SettingsScreenState extends State<SettingsScreen>
         ],
       ],
     );
+  }
+
+  bool _syncing = false;
+
+  Future<void> _syncNow() async {
+    setState(() => _syncing = true);
+    String message;
+    try {
+      await CloudSyncService.syncAll(full: true);
+      message = 'Data jsou synchronizovaná s cloudem';
+    } catch (_) {
+      message = 'Synchronizace se nezdařila – zkontrolujte připojení';
+    }
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Odhlásit se?'),
+        content: const Text(
+            'Vaše data zůstanou uložená v cloudu a po dalším přihlášení se '
+            'znovu stáhnou. Z tohoto zařízení se smažou.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Odhlásit')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Neodeslané změny (typicky bez signálu) by se odhlášením ztratily.
+    if (!await CloudSyncService.waitForPendingWrites()) {
+      if (!mounted) return;
+      final force = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Neodeslané změny'),
+          content: const Text(
+              'Některé změny se zatím nepodařilo odeslat do cloudu (nejspíš '
+              'chybí připojení). Pokud se odhlásíte teď, o tyto změny '
+              'přijdete.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Zrušit')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Přesto odhlásit')),
+          ],
+        ),
+      );
+      if (force != true) return;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    await AuthService.signOut();
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Smazat účet a data?'),
+        content: const Text(
+            'Nevratně se smažou všechny soupisy, databáze vozů, adresář '
+            'i nastavení – v cloudu i v tomto zařízení – a váš účet '
+            'v aplikaci. Pro potvrzení budete vyzváni k výběru Google účtu.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Smazat')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      if (!await AuthService.deleteAccount()) return;
+      navigator.popUntil((route) => route.isFirst);
+    } catch (e) {
+      debugPrint('Chyba při mazání účtu: $e');
+      messenger.showSnackBar(const SnackBar(
+          content: Text(
+              'Účet se nepodařilo smazat – zkontrolujte připojení a zkuste '
+              'to znovu.')));
+    }
   }
 
   // ─── SDÍLENÉ WIDGETY ────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'inventory_service.dart';
+import 'settings_sync.dart';
 import 'uic_validator.dart';
 import 'wagon_registry_service.dart';
 
@@ -20,6 +21,7 @@ class TutorialService {
   static Future<void> markComplete() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_key, true);
+    await SettingsSync.markChanged();
   }
 
   /// Vytvoří demo soupis se třemi vozy pro účely průvodce.

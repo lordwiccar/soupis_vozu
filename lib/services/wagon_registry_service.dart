@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/inventory.dart';
 import '../models/wagon_registry_entry.dart';
+import 'cloud_sync_service.dart';
 import 'decimal_input.dart';
 import 'uic_validator.dart';
 
@@ -74,8 +75,7 @@ class WagonRegistryService {
       // Rychlost se dělí na "prázdný" a "ložený" stav vozu; přidávají se
       // i počet náprav a nekovové špalíky.
       await db.execute('ALTER TABLE $_table ADD COLUMN max_speed_empty REAL');
-      await db
-          .execute('ALTER TABLE $_table ADD COLUMN max_speed_loaded REAL');
+      await db.execute('ALTER TABLE $_table ADD COLUMN max_speed_loaded REAL');
       await db.execute('ALTER TABLE $_table ADD COLUMN axle_count INTEGER');
       await db.execute(
           'ALTER TABLE $_table ADD COLUMN non_metallic_blocks INTEGER NOT NULL DEFAULT 0');
@@ -142,27 +142,30 @@ class WagonRegistryService {
   }) async {
     await initDatabase();
 
+    final stamp = updatedAt ?? DateTime.now();
     try {
+      final row = {
+        'number': number,
+        'formatted_number': formattedNumber,
+        'notes': notes,
+        'updated_at': stamp.toIso8601String(),
+        'weight': weight,
+        'brake_weight_g': brakeWeightG,
+        'brake_weight_p': brakeWeightP,
+        'handbrake': handbrake ? 1 : 0,
+        'handbrake_kn': handbrake ? handbrakeForceKn : null,
+        'max_speed_empty': maxSpeedEmpty,
+        'max_speed_loaded': maxSpeedLoaded,
+        'length': length,
+        'axle_count': axleCount,
+        'non_metallic_blocks': nonMetallicBlocks ? 1 : 0,
+      };
       await _database!.insert(
         _table,
-        {
-          'number': number,
-          'formatted_number': formattedNumber,
-          'notes': notes,
-          'updated_at': (updatedAt ?? DateTime.now()).toIso8601String(),
-          'weight': weight,
-          'brake_weight_g': brakeWeightG,
-          'brake_weight_p': brakeWeightP,
-          'handbrake': handbrake ? 1 : 0,
-          'handbrake_kn': handbrake ? handbrakeForceKn : null,
-          'max_speed_empty': maxSpeedEmpty,
-          'max_speed_loaded': maxSpeedLoaded,
-          'length': length,
-          'axle_count': axleCount,
-          'non_metallic_blocks': nonMetallicBlocks ? 1 : 0,
-        },
+        row,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
+      CloudSyncService.pushDoc(CloudSyncService.wagons, number, row, stamp);
     } catch (e) {
       debugPrint('Chyba při ukládání vozu do registru: $e');
       rethrow;
@@ -171,12 +174,57 @@ class WagonRegistryService {
 
   /// Ruční smazání záznamu (z obrazovky databáze vozů).
   static Future<void> deleteEntry(String number) async {
+    await deleteLocal(number);
+    CloudSyncService.pushDeleted(CloudSyncService.wagons, number);
+  }
+
+  // ─── SYNCHRONIZACE S CLOUDEM (viz CloudSyncService) ─────────────────────
+
+  /// Smaže záznam jen lokálně (smazání přišlo z cloudu).
+  static Future<void> deleteLocal(String number) async {
     await initDatabase();
     await _database!.delete(
       _table,
       where: 'number = ?',
       whereArgs: [number],
     );
+  }
+
+  /// Čas poslední změny každého záznamu podle čísla vozu.
+  static Future<Map<String, DateTime>> getSyncStamps() async {
+    await initDatabase();
+    final rows =
+        await _database!.query(_table, columns: ['number', 'updated_at']);
+    return {
+      for (final row in rows)
+        row['number'] as String: DateTime.parse(row['updated_at'] as String),
+    };
+  }
+
+  static Future<Map<String, dynamic>?> getSyncData(String number) async {
+    return (await getEntry(number))?.toMap();
+  }
+
+  /// Zapíše záznam stažený z cloudu (bez odeslání zpět do cloudu).
+  static Future<void> applyRemote(
+      String number, Map<String, dynamic> data, DateTime updatedAt) async {
+    await initDatabase();
+    final entry = WagonRegistryEntry.fromMap({
+      ...data,
+      'number': number,
+      'updated_at': updatedAt.toLocal().toIso8601String(),
+    });
+    await _database!.insert(
+      _table,
+      entry.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Smaže všechny lokální záznamy (odhlášení / změna účtu).
+  static Future<void> clearAll() async {
+    await initDatabase();
+    await _database!.delete(_table);
   }
 
   static Future<List<WagonRegistryEntry>> getAll() async {

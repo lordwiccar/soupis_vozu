@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.2.1+11 (2026-11-20)
+- Nastavení: karta Motiv přejmenována na Vzhled. Nová volba velikosti čísel
+  ve výpisu vozů na obrazovce skenování (15 / 18 / 21 / 24) s živým
+  náhledem a volitelné tučné zvýraznění posledního čtyřčíslí
+  (`AppearanceService`, klíče `scan_list_font_step`
+  a `scan_list_highlight_last4`, synchronizují se s cloudem).
+  - Číslo, které se nevejde, se zkracuje zleva po celých skupinách
+    (`…54 7843 112-7` → `…7843 112-7` → `…112-7`); stavové ikony mají
+    pevnou šířku a nikdy se nevytlačí (`WagonNumberText`).
+- Skenování: při pokračování v existujícím soupisu se ve výpisu zobrazují
+  i dříve naskenované vozy – šedě, nad žlutým oddělovačem, pod kterým jsou
+  vozy z aktuální relace. Nejnovější vůz zůstává dole u tlačítka SKENOVAT.
+  Řádek výpisu je společný widget `ScannedWagonRow` (skenování i náhled
+  v nastavení).
+- Widgetové testy (`test/widget_test.dart`) přepsány: místo celé appky
+  (kvůli Firebase v testu nespustitelné) testují přihlašovací obrazovku,
+  řádek výpisu vozů a oddělovač; nový `test/wagon_number_text_test.dart`.
+
+## 1.2.0+10 (2026-11-18)
+- Povinné přihlášení Google účtem (Firebase Authentication).
+- Automatická synchronizace všech dat s Cloud Firestore (lokace eur3 – EU)
+  pod účtem uživatele `users/{uid}/…`: databáze vozů, soupisy včetně vozů,
+  adresář kontaktů a nastavení (motiv, režim skenování, AI model a API klíč,
+  dokončený tutoriál).
+  - Lokální SQLite zůstává hlavním úložištěm, appka funguje offline; změny
+    drží ve frontě Firestore SDK a odešlou se po připojení.
+  - Při prvním přihlášení se lokální data sloučí s cloudem, při startu se
+    stahují změny od poslední synchronizace; o vítězné verzi rozhoduje čas
+    poslední změny, smazání se přenáší přes příznak `deleted`.
+  - Při přihlášení jiného účtu se lokální data předchozího účtu smažou.
+- Nastavení → O aplikaci: Synchronizovat nyní, Odhlásit se, Smazat účet
+  a data (požadavek Google Play), Licence open source knihoven.
+- Kontakty mají nově čas poslední změny (migrace contacts.db na verzi 3).
+- Zásady ochrany osobních údajů doplněny o cloudové úložiště, přihlášení,
+  smazání účtu a knihovny třetích stran.
+- Build: Kotlin Gradle plugin 2.3.20, `compilerOptions` místo
+  `kotlinOptions`, vypnutá inkrementální kompilace Kotlinu.
+
 ## 1.1.1+9 (2026-10-28)
 - Výpis MZOB: přidána maximální rychlost vlaku podle vozu s nejnižší
   rychlostí v soupisu (u loženého vlaku rychlost ložený, jinak prázdný).

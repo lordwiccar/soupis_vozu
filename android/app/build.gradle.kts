@@ -3,6 +3,9 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -28,12 +31,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         applicationId = "media.whitewhale.soupisvozu"
+        manifestPlaceholders["appLabel"] = "Soupis vozů"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -54,6 +54,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug build jde nainstalovat vedle verze z Google Play (jiný
+            // balíček i název). Ve Firebase je zaregistrovaný zvlášť, jeho
+            // konfigurace je v src/debug/google-services.json.
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "Soupis vozů DEBUG"
+        }
         release {
             // Použije release keystore, pokud je k dispozici (key.properties existuje).
             // Bez něj by se build.gradle nedal syncnout na stroji bez key.properties,
@@ -78,4 +85,10 @@ android {
 
 flutter {
     source = "../.."
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }

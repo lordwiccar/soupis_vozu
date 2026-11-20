@@ -6,6 +6,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// repozitáře.
 const List<Map<String, dynamic>> changelogEntries = [
   {
+    'version': '1.2.1',
+    'date': '20. 11. 2026',
+    'notes': [
+      'Karta Motiv v Nastavení se jmenuje Vzhled a nově na ní jde zvětšit '
+          'čísla vozů ve výpisu při skenování, případně tučně zvýraznit '
+          'poslední čtyřčíslí. Když se číslo nevejde, zkrátí se zleva – '
+          'konec čísla zůstane vždy vidět.',
+      'Při pokračování ve skenování existujícího soupisu jsou ve výpisu '
+          'šedě vidět i dříve naskenované vozy, takže je jasné, kde '
+          'skenování skončilo.',
+    ],
+  },
+  {
+    'version': '1.2.0',
+    'date': '18. 11. 2026',
+    'notes': [
+      'Přihlášení Google účtem – soupisy, databáze vozů, adresář '
+          'i nastavení se pod ním automaticky zálohují do cloudu (servery '
+          'v EU) a jsou dostupné na všech vašich zařízeních.',
+      'Appka funguje i bez signálu – změny se do cloudu odešlou, jakmile '
+          'bude zařízení online.',
+      'V Nastavení → O aplikaci přibylo ruční spuštění synchronizace, '
+          'odhlášení a smazání účtu včetně všech dat.',
+      'V Nastavení → O aplikaci přibyl přehled licencí open source '
+          'knihoven.',
+    ],
+  },
+  {
     'version': '1.1.1',
     'date': '28. 10. 2026',
     'notes': [

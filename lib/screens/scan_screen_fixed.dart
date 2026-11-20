@@ -13,11 +13,13 @@ import 'package:soupis_vozu/services/scan_settings_service.dart';
 import 'package:soupis_vozu/services/ai_ocr_service.dart';
 import 'package:soupis_vozu/services/wagon_registry_service.dart';
 import 'package:soupis_vozu/services/tutorial_target_registry.dart';
+import 'package:soupis_vozu/services/appearance_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'wagon_detail_screen.dart';
+import '../widgets/scanned_wagon_row.dart';
 import '../widgets/adaptive/fold_info.dart';
 import '../widgets/adaptive/fold_two_pane.dart';
 
@@ -64,6 +66,13 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
   bool _isFlashOn = false; // Stav blesku
   int _failedScanCount = 0; // Počet neúspěšných snímků za sebou
   final List<String> _detectedNumbers = [];
+  // Vozy naskenované v dřívějších relacích tohoto soupisu (při pokračování
+  // v existujícím soupisu), v pořadí skenování. Zobrazují se ve výpisu
+  // šedě nad vozy z aktuální relace, aby bylo vidět, kde skenování skončilo.
+  final List<String> _previousNumbers = [];
+  // Vzhled výpisu vozů (karta Vzhled v Nastavení).
+  int _fontStep = 0;
+  bool _highlightLast4 = false;
   int _totalWagonCount = 0; // Celkový počet vozů v soupisu
   // Zda má daný vůz (klíč = číslo bez formátování) v databázi vyplněné
   // všechny sledované technické údaje – řídí malou ikonku u čísla v seznamu.
@@ -118,6 +127,7 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     if (widget.initialWagonNumbers != null) {
       _detectedNumbers.addAll(widget.initialWagonNumbers!);
     }
+    _loadAppearance();
 
     TutorialTargetRegistry.register('scan.captureButton', _captureButtonKey);
     TutorialTargetRegistry.register('scan.firstWagonRow', _firstWagonRowKey);
@@ -191,6 +201,39 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
     }
   }
 
+  Future<void> _loadAppearance() async {
+    final step = await AppearanceService.getScanFontStep();
+    final highlight = await AppearanceService.getHighlightLast4();
+    if (mounted) {
+      setState(() {
+        _fontStep = step;
+        _highlightLast4 = highlight;
+      });
+    }
+  }
+
+  /// Vozy soupisu, které nepatří do aktuální relace – tedy všechny vozy
+  /// z databáze kromě těch v [_detectedNumbers] (každý výskyt v relaci
+  /// odebere jeden výskyt z databáze, takže se vůz naskenovaný v relaci
+  /// znovu neukáže dvakrát; týká se hlavně tutoriálu, který předvyplní
+  /// ukázkové vozy a zároveň je má v databázi).
+  List<String> _previousFrom(List<WagonNumber> wagons) {
+    final inSession = <String, int>{};
+    for (final n in _detectedNumbers) {
+      inSession[n] = (inSession[n] ?? 0) + 1;
+    }
+    final result = <String>[];
+    for (final wagon in wagons) {
+      final left = inSession[wagon.number] ?? 0;
+      if (left > 0) {
+        inSession[wagon.number] = left - 1;
+      } else {
+        result.add(wagon.number);
+      }
+    }
+    return result;
+  }
+
   Future<void> _loadWagonStats() async {
     if (_currentInventoryId == null) return;
     try {
@@ -200,6 +243,9 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
         setState(() {
           _totalWagonCount = wagons.length;
           _nextOrderNumber = wagons.length + 1;
+          _previousNumbers
+            ..clear()
+            ..addAll(_previousFrom(wagons));
           for (final wagon in wagons) {
             _wagonComplete[wagon.number] = wagon.hasCompleteInfo;
             final parsed = WagonNumber.parseNotes(wagon.notes);
@@ -1198,6 +1244,21 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
       }
       if (mounted) {
         setState(() {
+          // Dříve naskenovaný vůz mohl být v detailu přečíslován nebo
+          // smazán – výpis dřívějších vozů a celkový počet obnovíme podle
+          // databáze. (U vozů z aktuální relace zůstává chování beze změny.)
+          if (_previousNumbers.contains(number)) {
+            _previousNumbers
+              ..clear()
+              ..addAll(_previousFrom(wagons));
+            _totalWagonCount = wagons.length;
+            for (final w in wagons) {
+              _wagonComplete[w.number] = w.hasCompleteInfo;
+              final parsed = WagonNumber.parseNotes(w.notes);
+              _wagonHasDefect[w.number] =
+                  parsed.flags.isNotEmpty || parsed.text.trim().isNotEmpty;
+            }
+          }
           if (wagon != null) {
             _wagonComplete[number] = wagon.hasCompleteInfo;
             final parsed = WagonNumber.parseNotes(wagon.notes);
@@ -1445,95 +1506,83 @@ class _ScanScreenFixedState extends State<ScanScreenFixed> {
           ),
           Divider(
               color: ThemeService.kRailAmber.withValues(alpha: 0.3), height: 1),
-          Expanded(
-            child: _detectedNumbers.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Zatím žádné vozy',
-                      style: TextStyle(color: Colors.white54, fontSize: 14),
-                    ),
-                  )
-                : ListView.builder(
-                    reverse: true,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: _detectedNumbers.length,
-                    itemBuilder: (context, index) {
-                      final actualIndex = _detectedNumbers.length - 1 - index;
-                      final number = _detectedNumbers[actualIndex];
-                      final isValid = UicValidator.validateUicNumber(number);
-                      final isComplete = _wagonComplete[number] ?? false;
-                      final hasDefect = _wagonHasDefect[number] ?? false;
-                      return Padding(
-                        key: actualIndex == 0 ? _firstWagonRowKey : null,
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            Icon(
-                              isValid ? Icons.check_circle : Icons.error,
-                              color: isValid ? Colors.green : Colors.red,
-                              size: 18,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                UicValidator.formatUicNumber(number),
-                                style: TextStyle(
-                                  color: isValid ? Colors.white : Colors.red,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                            Tooltip(
-                              message: isComplete
-                                  ? 'Databáze: technické údaje kompletní'
-                                  : 'Databáze: technické údaje neúplné',
-                              child: Icon(
-                                isComplete
-                                    ? Icons.circle
-                                    : Icons.circle_outlined,
-                                size: 8,
-                                color: isComplete
-                                    ? Colors.greenAccent.withValues(alpha: 0.8)
-                                    : Colors.white24,
-                              ),
-                            ),
-                            if (hasDefect) ...[
-                              const Tooltip(
-                                message:
-                                    'Databáze: vůz veden se závadou (příznak/poznámka)',
-                                child: Icon(
-                                  Icons.warning_amber_rounded,
-                                  size: 18,
-                                  color: Colors.orange,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            const SizedBox(width: 10),
-                            IconButton(
-                              key: actualIndex == 0 ? _firstEditIconKey : null,
-                              icon: const Icon(
-                                Icons.edit_outlined,
-                                color: ThemeService.kRailAmber,
-                                size: 18,
-                              ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              onPressed: () => _openWagonDetail(number),
-                              tooltip: 'Přidat poznámky a příznaky',
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: _buildWagonList()),
         ],
       ),
+    );
+  }
+
+  /// Výpis vozů. Je obrácený (`reverse: true`), takže nejnovější vůz je
+  /// vždy dole u tlačítka SKENOVAT. Při pokračování v soupisu jsou nad vozy
+  /// z aktuální relace šedě vozy z dřívějška, oddělené čarou – poslední
+  /// dříve naskenovaný vůz je tak hned nad ní.
+  Widget _buildWagonList() {
+    final session = _detectedNumbers;
+    final previous = _previousNumbers;
+    if (session.isEmpty && previous.isEmpty) {
+      return const Center(
+        child: Text(
+          'Zatím žádné vozy',
+          style: TextStyle(color: Colors.white54, fontSize: 14),
+        ),
+      );
+    }
+
+    final hasPrevious = previous.isNotEmpty;
+    // Pod oddělovačem: vozy z relace, nebo (když v relaci zatím nic není)
+    // jeden řádek s textem.
+    final bottomCount = session.isNotEmpty ? session.length : 1;
+    final itemCount =
+        hasPrevious ? bottomCount + 1 + previous.length : session.length;
+
+    return ListView.builder(
+      reverse: true,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
+        if (index < bottomCount) {
+          if (session.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.only(top: 2, bottom: 6),
+              child: Text(
+                'Zatím žádné nové vozy v této relaci',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white38, fontSize: 13),
+              ),
+            );
+          }
+          final actualIndex = session.length - 1 - index;
+          return _buildWagonRow(
+            session[actualIndex],
+            isPrevious: false,
+            rowKey: actualIndex == 0 ? _firstWagonRowKey : null,
+            editKey: actualIndex == 0 ? _firstEditIconKey : null,
+          );
+        }
+        if (index == bottomCount) return const PreviousWagonsDivider();
+        final prevIndex = previous.length - 1 - (index - bottomCount - 1);
+        return _buildWagonRow(previous[prevIndex], isPrevious: true);
+      },
+    );
+  }
+
+  Widget _buildWagonRow(
+    String number, {
+    required bool isPrevious,
+    Key? rowKey,
+    Key? editKey,
+  }) {
+    return ScannedWagonRow(
+      key: rowKey,
+      number: number,
+      isValid: UicValidator.validateUicNumber(number),
+      isComplete: _wagonComplete[number] ?? false,
+      hasDefect: _wagonHasDefect[number] ?? false,
+      isPrevious: isPrevious,
+      fontStep: _fontStep,
+      highlightLast4: _highlightLast4,
+      editKey: editKey,
+      onEdit: () => _openWagonDetail(number),
     );
   }
 

@@ -63,3 +63,6 @@ assets/slapmac.dmg
 
 # Claude Code local settings (per-user, not shared)
 .claude/settings.local.json
+
+# Pracovní poznámky pro další session (jen lokálně)
+HANDOFF.md
